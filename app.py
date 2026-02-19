@@ -20,7 +20,8 @@ SERIES_FILE = DATA_DIR / "series.json"
 
 ELEVEN_API_KEY = os.environ.get("ELEVEN_LABS_API_KEY") or os.environ.get("ELEVENLABS_API_KEY", "")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-WEEKLY_CAP = 50  # raised — series will consume more
+CRON_SECRET = os.environ.get("CRON_SECRET", "")  # Set in Railway — used to authenticate scheduled jobs
+WEEKLY_CAP = 50
 
 BASE_URL = os.environ.get("BASE_URL", "https://intelligence-briefings-production.up.railway.app")
 
@@ -495,42 +496,61 @@ Tone: sharp, executive, zero fluff."""
 def generate_grounded_script(topic, depth="standard", production_brief=""):
     brief_section = f"\nPRODUCTION BRIEF:\n{production_brief}\n" if production_brief else ""
 
-    prompt = f"""Write an executive podcast script on this topic.
+    seg_min = {"executive": 10, "standard": 16, "deep": 24}.get(depth, 16)
 
-TITLE: {topic['title']}
+    prompt = f"""You are writing a premium executive intelligence podcast script. This is NOT generic business content.
+
+HOST PROFILES (stay in character — they are colleagues who push each other):
+- ALEX: Former VP Advanced Analytics at a Fortune 100 CPG. Evidence-first thinker. Speaks in data, patterns, and structural causes. Gets impatient with hand-waving. Comfortable saying "the numbers don't support that." Direct without being abrasive.
+- MORGAN: Former strategy consultant turned operator. Thinks in decisions, consequences, and capital. Asks "who benefits from this belief?" Challenges comfortable consensus. Often the one who names the thing everyone is thinking but not saying.
+
+They have genuine intellectual disagreements. At least once per episode, Morgan should push back on something Alex says (or vice versa) with a real counter — not just "yes, and." Their dynamic makes the listener lean forward.
+
+LISTENER PROFILE:
+C-suite executive in analytics, AI, or data. Has 20+ years of experience. Reads Stratechery and The Economist, not TechCrunch. Is skeptical of AI hype but knows it's real. Works at the intersection of enterprise technology and business strategy. Specific context: beverage-alcohol industry, enterprise CPG, or analytics-led organizations.
+
+TOPIC: {topic['title']}
 CORE TENSION: {topic['tension']}
 WHAT LEADERS GET WRONG: {topic.get('common_mistake', '')}
-QUESTIONS TO COVER: {'; '.join(topic.get('sub_questions', []))}
+KEY QUESTIONS: {'; '.join(topic.get('sub_questions', []))}
+WHY IT MATTERS: {topic.get('why_it_matters', '')}
 {brief_section}
-DEPTH: {depth}
 
-You are writing a two-host dialogue: Alex (analytical, direct) vs Morgan (strategic, challenges assumptions).
-Each segment must be 3-5 substantial sentences of spoken content — no one-liners.
+CONTENT STANDARDS (every episode must hit all of these):
+- Name at least 2 specific companies, executives, or real situations as examples (not "a major CPG brand")
+- Include at least one piece of specific data, a statistic, or a concrete number
+- At least one moment where the hosts genuinely disagree and argue it out before resolving
+- The close must leave the listener with ONE specific question to ask in their next leadership meeting
+- Vary sentence rhythm — mix short punchy statements with longer analytical ones
+- No filler phrases: "at the end of the day", "it's important to note", "in today's landscape", "let's dive in"
+- Spoken-word only — no bullet points, no headers, no lists. Pure dialogue.
 
-Return ONLY a JSON array:
-[{{"host": "Alex", "text": "..."}}, ...]
+STRUCTURE (each section gets {max(2, seg_min//6)}-{max(3, seg_min//4)} segments):
+1. COLD OPEN — Drop into the tension immediately. No throat-clearing. State something that makes the listener stop what they're doing.
+2. GROUND IT — Concrete, named examples of what is actually happening right now. Specific companies, specific decisions, specific outcomes.
+3. THE MECHANISM — Not what is happening, but WHY. The structural force, the incentive misalignment, the thing that makes this pattern repeat.
+4. THE REAL MISTAKE — The specific error that smart, experienced leaders make. The more counterintuitive the better.
+5. THE LEVER — What changes outcomes. One or two specific moves, not a framework. What would you actually do differently Monday morning?
+6. THE REFRAME — Close with one idea that permanently changes how they see this topic. Not a summary. A new lens.
 
-MINIMUM SEGMENT COUNTS (strictly enforced — count before returning):
-- executive: MINIMUM 10 segments
-- standard: MINIMUM 16 segments
-- deep: MINIMUM 24 segments
+MINIMUM: {seg_min} segments total. Count before returning. Add more if under.
+Each segment: 3-5 substantial spoken sentences. No one-liners.
 
-If you are under the minimum, you MUST add more segments before returning.
-
-Structure — cover ALL sections, each gets 2-4 segments:
-1. Cold open — state the uncomfortable truth, make the listener feel the tension
-2. Ground it — concrete examples, what is actually happening right now
-3. The mechanism — WHY this dynamic exists, the structural or incentive cause
-4. What leaders get wrong — the specific mistake sophisticated people make
-5. The decision leverage — what to do differently, what question changes outcomes
-6. Close — one reframe that permanently changes how they think about this
+Return ONLY a valid JSON array, no markdown, no preamble:
+[{{"host": "Alex", "text": "..."}}, {{"host": "Morgan", "text": "..."}}, ...]
 
 After the JSON array, on a new line:
 SOURCES: source1, source2, source3"""
 
     try:
-        data = call_anthropic([{"role": "user", "content": prompt}],
-                              max_tokens=4000, use_web_search=False)
+        try:
+            data = call_anthropic([{"role": "user", "content": prompt}],
+                                  max_tokens=4000, use_web_search=True)
+            print("[SCRIPT] Web search enabled")
+        except Exception as ws_err:
+            print(f"[SCRIPT] Web search failed ({ws_err}), falling back to no-search")
+            data = call_anthropic([{"role": "user", "content": prompt}],
+                                  max_tokens=4000, use_web_search=False)
         full_text = extract_text(data)
 
         sources = []
@@ -841,6 +861,11 @@ def _run_create_series(series_id, topic_or_prompt, num_episodes, voice_alex, voi
 def index():
     return render_template('index.html')
 
+@app.route('/listen')
+def listener():
+    """Public-facing episode player — shareable, no production controls."""
+    return render_template('listen.html')
+
 @app.route('/episodes/<path:filename>')
 def serve_episode(filename):
     return send_from_directory(EPISODES_DIR, filename)
@@ -893,6 +918,32 @@ def api_autoqueue():
     if job_id:
         return jsonify({"success": True, "job_id": job_id})
     return jsonify({"success": False, "error": "Auto-queue failed — check AR dashboard connectivity"})
+
+@app.route('/api/cron/autoqueue', methods=['GET', 'POST'])
+def api_cron_autoqueue():
+    """
+    Scheduled autoqueue endpoint — called by external cron (cron-job.org or similar).
+    Requires ?secret=CRON_SECRET or Authorization: Bearer CRON_SECRET header.
+    Set CRON_SECRET in Railway environment variables.
+    Example cron-job.org URL: https://intelligence-briefings-production.up.railway.app/api/cron/autoqueue?secret=YOUR_SECRET
+    Recommended schedule: Daily at 06:00 America/Chicago
+    """
+    # Auth check
+    secret = request.args.get("secret") or request.headers.get("Authorization", "").replace("Bearer ", "")
+    if CRON_SECRET and secret != CRON_SECRET:
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+
+    if not ANTHROPIC_API_KEY or not ELEVEN_API_KEY:
+        return jsonify({"success": False, "error": "API keys not configured"}), 500
+
+    job_id = autoqueue_ar_topic(
+        voice_alex="Chris - Charming, Down-to-Earth",
+        voice_morgan="Matilda - Knowledgable, Professional"
+    )
+    if job_id:
+        print(f"[CRON] Auto-queued AR briefing → job {job_id}")
+        return jsonify({"success": True, "job_id": job_id, "triggered_at": datetime.now(timezone.utc).isoformat()})
+    return jsonify({"success": False, "error": "Autoqueue failed"}), 500
 
 # --- Series ---
 

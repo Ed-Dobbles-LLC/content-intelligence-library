@@ -303,6 +303,21 @@ select { width: 100%; background: var(--surface2); border: 1px solid var(--borde
           <button class="btn-admin amber" id="autoQueueBtn" onclick="triggerAutoQueue()">⚡ Queue AR Briefing Now</button>
           <span class="admin-status" id="autoQueueStatus"></span>
         </div>
+        <div style="margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid var(--border)">
+          <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.4rem;font-family:Rajdhani,sans-serif;text-transform:uppercase;letter-spacing:0.08em;font-weight:700;">Scheduled Cron Setup</div>
+          <div style="font-size:0.75rem;color:var(--muted);line-height:1.6;margin-bottom:0.5rem">To run daily automatically: set <code style="background:var(--surface2);padding:1px 4px;border-radius:2px">CRON_SECRET</code> in Railway, then add this URL to <a href="https://cron-job.org" target="_blank" style="color:var(--blue)">cron-job.org</a> on a daily schedule:</div>
+          <div style="font-family:monospace;font-size:0.7rem;background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:6px 10px;color:var(--white);word-break:break-all;margin-bottom:0.4rem" id="cronUrlDisplay">https://intelligence-briefings-production.up.railway.app/api/cron/autoqueue?secret=YOUR_CRON_SECRET</div>
+          <div style="font-size:0.7rem;color:var(--muted)">Recommended: Daily at 06:00 America/Chicago, GET request</div>
+        </div>
+      </div>
+
+      <div class="admin-section">
+        <div class="admin-title">Public Listener</div>
+        <div class="admin-desc">Shareable public episode player — no production controls. Share with colleagues or use as your thought leadership hub.</div>
+        <div class="admin-row">
+          <a href="/listen" target="_blank" class="btn-admin" style="text-decoration:none">↗ Open Listener</a>
+          <button class="btn-admin" onclick="navigator.clipboard.writeText(window.location.origin+'/listen').then(()=>this.textContent='✓ Copied').catch(()=>{});setTimeout(()=>this.textContent='Copy Link',2000)">Copy Link</button>
+        </div>
       </div>
     </div>
   </main>
