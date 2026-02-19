@@ -4,282 +4,386 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Intelligence Briefings — Executive Podcast</title>
-<meta name="description" content="Executive intelligence briefings on AI, analytics, and enterprise strategy. Produced for senior leaders who think in systems.">
+<meta name="description" content="Senior-level analysis on AI, analytics, and enterprise strategy. Two experienced practitioners — no hype, no basics.">
 <meta property="og:title" content="Intelligence Briefings">
-<meta property="og:description" content="Executive intelligence briefings on AI, analytics, and enterprise strategy.">
+<meta property="og:description" content="Senior-level analysis on AI, analytics, and enterprise strategy.">
 <meta property="og:type" content="website">
-<link rel="alternate" type="application/rss+xml" title="Intelligence Briefings Podcast" href="/feed.xml">
+<link rel="alternate" type="application/rss+xml" title="Intelligence Briefings" href="/feed.xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg: #0a0d12; --surface: #111620; --surface2: #181f2e;
-  --border: rgba(255,255,255,0.07); --red: #c0392b; --red-bright: #e74c3c;
-  --white: #eaecf0; --muted: #7c8794; --green: #27ae60; --blue: #2980b9;
-  --accent: #e74c3c;
+  --bg:#080b10;--surface:#0f1420;--surface2:#161d2e;
+  --border:rgba(255,255,255,0.07);--red:#c0392b;--red-bright:#e74c3c;
+  --white:#eaecf0;--muted:#6b7685;--green:#27ae60;--blue:#2980b9;--amber:#f39c12;
 }
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { background: var(--bg); color: var(--white); font-family: 'Inter', sans-serif; min-height: 100vh; }
-
-/* HEADER */
-header { border-bottom: 1px solid var(--border); padding: 0; }
-.header-inner { max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem 1.5rem; }
-.show-label { font-family: 'Rajdhani', sans-serif; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--red-bright); margin-bottom: 0.4rem; }
-h1 { font-family: 'Rajdhani', sans-serif; font-size: 2.4rem; font-weight: 700; letter-spacing: 0.04em; line-height: 1.1; margin-bottom: 0.6rem; }
-h1 span { color: var(--red-bright); }
-.show-desc { font-size: 0.9rem; color: var(--muted); line-height: 1.6; max-width: 560px; margin-bottom: 1.2rem; }
-.header-actions { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; }
-.btn-subscribe { display: inline-flex; align-items: center; gap: 0.4rem; background: var(--red); border: none; border-radius: 4px; color: var(--white); font-family: 'Rajdhani', sans-serif; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; padding: 9px 18px; cursor: pointer; text-decoration: none; transition: background 0.2s; }
-.btn-subscribe:hover { background: #a93226; }
-.btn-rss { display: inline-flex; align-items: center; gap: 0.4rem; background: transparent; border: 1px solid var(--border); border-radius: 4px; color: var(--muted); font-family: 'Rajdhani', sans-serif; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; padding: 9px 18px; cursor: pointer; transition: all 0.2s; }
-.btn-rss:hover { border-color: rgba(255,255,255,0.2); color: var(--white); }
-.ep-count-label { font-size: 0.75rem; color: var(--muted); }
-
-/* LAYOUT */
-.main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
-
-/* SEARCH / FILTER */
-.filter-bar { display: flex; gap: 0.75rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
-.search-input { flex: 1; min-width: 200px; background: var(--surface); border: 1px solid var(--border); border-radius: 5px; color: var(--white); font-family: 'Inter', sans-serif; font-size: 0.84rem; padding: 10px 14px; outline: none; transition: border-color 0.2s; }
-.search-input:focus { border-color: rgba(231,76,60,0.4); }
-.search-input::placeholder { color: var(--muted); }
-.filter-btn { background: var(--surface); border: 1px solid var(--border); border-radius: 5px; color: var(--muted); font-family: 'Rajdhani', sans-serif; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; padding: 10px 14px; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
-.filter-btn.active { border-color: var(--red-bright); color: var(--white); background: rgba(231,76,60,0.08); }
-.filter-btn:hover:not(.active) { border-color: rgba(255,255,255,0.15); color: var(--white); }
-
-/* NOW PLAYING */
-.now-playing { background: var(--surface); border: 1px solid rgba(231,76,60,0.25); border-radius: 8px; padding: 1.25rem; margin-bottom: 1.5rem; display: none; }
-.now-playing.visible { display: block; }
-.np-label { font-family: 'Rajdhani', sans-serif; font-size: 0.65rem; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; color: var(--red-bright); margin-bottom: 0.4rem; display: flex; align-items: center; gap: 0.4rem; }
-.np-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--red-bright); animation: pulse 1.5s infinite; }
-@keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
-.np-title { font-family: 'Rajdhani', sans-serif; font-size: 1.1rem; font-weight: 700; margin-bottom: 0.5rem; }
-.np-desc { font-size: 0.8rem; color: var(--muted); line-height: 1.5; margin-bottom: 0.75rem; max-width: 600px; }
-.np-audio audio { width: 100%; }
-
-/* EPISODE LIST */
-.ep-list { display: flex; flex-direction: column; gap: 1px; }
-.ep-item { background: var(--surface); border-radius: 6px; margin-bottom: 2px; overflow: hidden; transition: background 0.15s; cursor: pointer; }
-.ep-item:hover { background: var(--surface2); }
-.ep-item.active { background: var(--surface2); border-left: 3px solid var(--red-bright); }
-.ep-main { display: flex; align-items: center; gap: 1rem; padding: 1rem 1.25rem; }
-.ep-play-btn { width: 36px; height: 36px; border-radius: 50%; background: var(--surface2); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.2s; color: var(--muted); font-size: 0.9rem; }
-.ep-item:hover .ep-play-btn, .ep-item.active .ep-play-btn { border-color: var(--red-bright); color: var(--red-bright); background: rgba(231,76,60,0.08); }
-.ep-info { flex: 1; min-width: 0; }
-.ep-title { font-family: 'Rajdhani', sans-serif; font-size: 0.97rem; font-weight: 700; line-height: 1.3; margin-bottom: 0.2rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ep-meta { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
-.ep-date { font-size: 0.72rem; color: var(--muted); }
-.ep-badge { font-family: 'Rajdhani', sans-serif; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; background: var(--bg); border: 1px solid var(--border); border-radius: 2px; padding: 1px 5px; color: var(--muted); }
-.ep-badge.series { border-color: rgba(41,128,185,0.4); color: var(--blue); }
-.ep-expand { flex-shrink: 0; color: var(--muted); font-size: 0.75rem; transition: transform 0.2s; padding: 0 0.25rem; }
-.ep-item.expanded .ep-expand { transform: rotate(180deg); }
-.ep-detail { display: none; padding: 0 1.25rem 1rem 4.25rem; }
-.ep-item.expanded .ep-detail { display: block; }
-.ep-desc { font-size: 0.8rem; color: var(--muted); line-height: 1.6; margin-bottom: 0.75rem; }
-.ep-inline-audio audio { width: 100%; height: 38px; }
-.ep-sources { font-size: 0.68rem; color: var(--muted); font-style: italic; margin-top: 0.4rem; }
-
-/* EMPTY */
-.empty-state { text-align: center; padding: 4rem 1rem; color: var(--muted); }
-.empty-state h3 { font-family: 'Rajdhani', sans-serif; font-size: 1.1rem; font-weight: 700; margin-bottom: 0.5rem; color: var(--white); }
-
-/* RSS MODAL */
-.rss-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 100; display: none; align-items: center; justify-content: center; }
-.rss-modal.open { display: flex; }
-.rss-box { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem; width: 480px; max-width: 95vw; }
-.rss-box h3 { font-family: 'Rajdhani', sans-serif; font-size: 1.1rem; font-weight: 700; margin-bottom: 0.25rem; }
-.rss-box p { font-size: 0.8rem; color: var(--muted); margin-bottom: 1rem; line-height: 1.5; }
-.rss-url-display { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 10px 12px; font-family: monospace; font-size: 0.78rem; color: var(--white); word-break: break-all; margin-bottom: 0.75rem; }
-.rss-actions { display: flex; gap: 0.5rem; }
-.btn-copy-rss { flex: 1; background: var(--red); border: none; border-radius: 4px; color: var(--white); font-family: 'Rajdhani', sans-serif; font-size: 0.8rem; font-weight: 700; padding: 10px; cursor: pointer; }
-.btn-close-rss { flex: 0 0 auto; background: transparent; border: 1px solid var(--border); border-radius: 4px; color: var(--muted); font-family: 'Rajdhani', sans-serif; font-size: 0.8rem; font-weight: 700; padding: 10px 18px; cursor: pointer; }
-
-/* FOOTER */
-footer { border-top: 1px solid var(--border); margin-top: 3rem; padding: 1.5rem; text-align: center; color: var(--muted); font-size: 0.75rem; }
-footer a { color: var(--muted); text-decoration: none; }
-footer a:hover { color: var(--white); }
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--white);font-family:'Inter',sans-serif;min-height:100vh}
+.hero{border-bottom:1px solid var(--border);background:linear-gradient(180deg,rgba(192,57,43,0.05) 0%,transparent 100%)}
+.hero-inner{max-width:880px;margin:0 auto;padding:3rem 1.5rem 2rem}
+.eyebrow{font-family:'Rajdhani',sans-serif;font-size:0.7rem;font-weight:700;letter-spacing:0.22em;text-transform:uppercase;color:var(--red-bright);margin-bottom:0.6rem}
+h1{font-family:'Rajdhani',sans-serif;font-size:clamp(2rem,5vw,3rem);font-weight:700;letter-spacing:0.04em;line-height:1.05;margin-bottom:0.75rem}
+h1 span{color:var(--red-bright)}
+.show-desc{font-size:0.9rem;color:#8d99a8;line-height:1.7;max-width:520px;margin-bottom:1.5rem}
+.hero-actions{display:flex;gap:0.75rem;flex-wrap:wrap;align-items:center}
+.btn-primary{display:inline-flex;align-items:center;gap:0.4rem;background:var(--red);border:none;border-radius:4px;color:var(--white);font-family:'Rajdhani',sans-serif;font-size:0.82rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;padding:10px 20px;cursor:pointer;transition:background 0.2s}
+.btn-primary:hover{background:#a93226}
+.btn-ghost{display:inline-flex;align-items:center;gap:0.4rem;background:transparent;border:1px solid var(--border);border-radius:4px;color:var(--muted);font-family:'Rajdhani',sans-serif;font-size:0.82rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;padding:10px 20px;cursor:pointer;transition:all 0.2s}
+.btn-ghost:hover{border-color:rgba(255,255,255,0.2);color:var(--white)}
+.ep-count-badge{font-family:'Rajdhani',sans-serif;font-size:0.72rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:4px 10px}
+.layout{max-width:880px;margin:0 auto;padding:1.5rem;display:grid;grid-template-columns:1fr 272px;gap:2rem}
+@media(max-width:700px){.layout{grid-template-columns:1fr}.sidebar{display:none}}
+.now-playing{background:var(--surface);border:1px solid rgba(231,76,60,0.2);border-radius:8px;padding:1.25rem;margin-bottom:1.25rem;display:none}
+.now-playing.visible{display:block}
+.np-label{font-family:'Rajdhani',sans-serif;font-size:0.65rem;font-weight:700;letter-spacing:0.15em;text-transform:uppercase;color:var(--red-bright);margin-bottom:0.5rem;display:flex;align-items:center;gap:0.5rem}
+.np-pulse{width:6px;height:6px;border-radius:50%;background:var(--red-bright);animation:pulse 1.5s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+.np-title{font-family:'Rajdhani',sans-serif;font-size:1.1rem;font-weight:700;line-height:1.3;margin-bottom:0.4rem}
+.np-desc{font-size:0.79rem;color:var(--muted);line-height:1.6;margin-bottom:0.75rem;max-width:540px}
+.np-audio audio{width:100%}
+.np-share{margin-top:0.6rem;display:flex;gap:0.5rem}
+.btn-sm{background:transparent;border:1px solid var(--border);border-radius:3px;color:var(--muted);font-family:'Rajdhani',sans-serif;font-size:0.67rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;padding:5px 10px;cursor:pointer;transition:all 0.2s}
+.btn-sm:hover{border-color:rgba(255,255,255,0.2);color:var(--white)}
+.filter-bar{display:flex;gap:0.5rem;margin-bottom:1.25rem;flex-wrap:wrap}
+.search-input{flex:1;min-width:150px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--white);font-family:'Inter',sans-serif;font-size:0.82rem;padding:9px 12px;outline:none;transition:border-color 0.2s}
+.search-input:focus{border-color:rgba(231,76,60,0.35)}
+.search-input::placeholder{color:var(--muted)}
+.filter-btn{background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--muted);font-family:'Rajdhani',sans-serif;font-size:0.72rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;padding:9px 12px;cursor:pointer;transition:all 0.2s;white-space:nowrap}
+.filter-btn.active{border-color:var(--red-bright);color:var(--white);background:rgba(231,76,60,0.07)}
+.filter-btn:hover:not(.active){border-color:rgba(255,255,255,0.12);color:var(--white)}
+.ep-list{display:flex;flex-direction:column;gap:2px}
+.ep-item{background:var(--surface);border-radius:5px;overflow:hidden;transition:background 0.15s}
+.ep-item:hover{background:var(--surface2)}
+.ep-item.active{background:var(--surface2);border-left:2px solid var(--red-bright)}
+.ep-main{display:flex;align-items:center;gap:1rem;padding:1rem 1.1rem;cursor:pointer}
+.ep-play{width:34px;height:34px;border-radius:50%;background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:0.85rem;color:var(--muted);transition:all 0.2s}
+.ep-item:hover .ep-play,.ep-item.active .ep-play{border-color:var(--red-bright);color:var(--red-bright);background:rgba(231,76,60,0.08)}
+.ep-info{flex:1;min-width:0}
+.ep-title-text{font-family:'Rajdhani',sans-serif;font-size:0.95rem;font-weight:700;line-height:1.3;margin-bottom:0.2rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ep-meta-row{display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap}
+.ep-date-text{font-size:0.7rem;color:var(--muted)}
+.ep-badge{font-family:'Rajdhani',sans-serif;font-size:0.58rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;background:var(--bg);border:1px solid var(--border);border-radius:2px;padding:1px 5px;color:var(--muted)}
+.ep-badge.series{border-color:rgba(41,128,185,0.35);color:#5dade2}
+.ep-chevron{color:var(--muted);font-size:0.72rem;transition:transform 0.2s;flex-shrink:0}
+.ep-item.expanded .ep-chevron{transform:rotate(180deg)}
+.ep-detail{display:none;padding:0 1.1rem 1rem 4rem}
+.ep-item.expanded .ep-detail{display:block}
+.ep-desc-text{font-size:0.79rem;color:var(--muted);line-height:1.65;margin-bottom:0.75rem}
+.ep-inline-player{width:100%;margin-bottom:0.5rem}
+.ep-inline-player audio{width:100%;height:36px}
+.ep-actions{display:flex;gap:0.5rem;align-items:center;margin-top:0.3rem}
+.ep-sources-text{font-size:0.67rem;color:var(--muted);font-style:italic;margin-top:0.4rem}
+.empty-state{text-align:center;padding:3rem 1rem;color:var(--muted)}
+.empty-state h3{font-family:'Rajdhani',sans-serif;font-size:1.1rem;font-weight:700;margin-bottom:0.5rem;color:var(--white)}
+.sidebar{display:flex;flex-direction:column;gap:1.25rem}
+.side-card{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:1.1rem}
+.side-label{font-family:'Rajdhani',sans-serif;font-size:0.68rem;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:var(--muted);margin-bottom:0.75rem}
+.host-row{display:flex;align-items:flex-start;gap:0.75rem;margin-bottom:0.75rem;padding-bottom:0.75rem;border-bottom:1px solid var(--border)}
+.host-row:last-child{margin-bottom:0;padding-bottom:0;border-bottom:none}
+.host-avatar{width:36px;height:36px;border-radius:50%;background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-family:'Rajdhani',sans-serif;font-size:0.9rem;font-weight:700;color:var(--red-bright);flex-shrink:0}
+.host-name{font-family:'Rajdhani',sans-serif;font-size:0.85rem;font-weight:700;margin-bottom:0.15rem}
+.host-bio{font-size:0.71rem;color:var(--muted);line-height:1.5}
+.about-text{font-size:0.78rem;color:var(--muted);line-height:1.65}
+.about-text p{margin-bottom:0.6rem}
+.about-text p:last-child{margin-bottom:0}
+.rss-url-box{font-family:monospace;font-size:0.7rem;background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:8px 10px;color:var(--muted);word-break:break-all;margin-bottom:0.6rem}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:100;display:none;align-items:center;justify-content:center}
+.modal-overlay.open{display:flex}
+.modal-box{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1.5rem;width:480px;max-width:95vw}
+.modal-box h3{font-family:'Rajdhani',sans-serif;font-size:1.1rem;font-weight:700;margin-bottom:0.25rem}
+.modal-box p{font-size:0.8rem;color:var(--muted);margin-bottom:1rem;line-height:1.55}
+.modal-actions{display:flex;gap:0.5rem;margin-top:0.75rem}
+footer{border-top:1px solid var(--border);padding:1.5rem;text-align:center;color:var(--muted);font-size:0.73rem;margin-top:2rem}
+footer a{color:var(--muted);text-decoration:none}
+footer a:hover{color:var(--white)}
+.toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:10px 18px;font-family:'Rajdhani',sans-serif;font-size:0.8rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--green);z-index:200;opacity:0;transition:opacity 0.3s;pointer-events:none}
+.toast.show{opacity:1}
 </style>
 </head>
 <body>
 
-<div class="rss-modal" id="rssModal">
-  <div class="rss-box">
+<div class="modal-overlay" id="rssModal">
+  <div class="modal-box">
     <h3>Subscribe via Podcast App</h3>
-    <p>Copy this RSS feed URL and paste it into Apple Podcasts, Overcast, Pocket Casts, or any podcast app that supports custom RSS feeds.</p>
-    <div class="rss-url-display" id="rssUrlDisplay"></div>
-    <div class="rss-actions">
-      <button class="btn-copy-rss" onclick="copyFeedUrl()">Copy Feed URL</button>
-      <button class="btn-close-rss" onclick="closeRSSModal()">Close</button>
+    <p>Copy the RSS URL below and paste it into Apple Podcasts (File → Add a Show by URL), Overcast, Pocket Casts, or any app that supports custom feeds.</p>
+    <div class="rss-url-box" id="rssUrlDisplay"></div>
+    <div class="modal-actions">
+      <button class="btn-primary" style="flex:1" onclick="copyFeedUrl()">Copy Feed URL</button>
+      <button class="btn-ghost" onclick="closeModal('rssModal')">Close</button>
     </div>
   </div>
 </div>
 
-<header>
-  <div class="header-inner">
-    <div class="show-label">Executive Intelligence Podcast</div>
-    <h1>INTELLIGENCE <span>BRIEFINGS</span></h1>
-    <div class="show-desc">Senior-level analysis on AI, analytics, and enterprise strategy. Two experienced practitioners — no hype, no basics. Topics calibrated for executives who already know the fundamentals.</div>
-    <div class="header-actions">
-      <button class="btn-subscribe" onclick="openRSSModal()">
-        🎙 Subscribe via RSS
-      </button>
-      <button class="btn-rss" onclick="openApplePodcasts()">Open in Apple Podcasts</button>
-      <span class="ep-count-label" id="epCountLabel"></span>
+<div class="modal-overlay" id="shareModal">
+  <div class="modal-box">
+    <h3 id="shareModalTitle">Share Episode</h3>
+    <p>Share the direct link to this episode, or post to LinkedIn with context.</p>
+    <div class="rss-url-box" id="shareUrlDisplay"></div>
+    <div class="modal-actions">
+      <button class="btn-primary" style="flex:1" onclick="copyShareUrl()">Copy Link</button>
+      <button class="btn-ghost" onclick="shareToLinkedIn()">↗ LinkedIn</button>
+      <button class="btn-ghost" onclick="closeModal('shareModal')">Close</button>
     </div>
   </div>
-</header>
+</div>
 
-<main class="main">
+<div class="toast" id="toast"></div>
 
-  <!-- NOW PLAYING -->
-  <div class="now-playing" id="nowPlaying">
-    <div class="np-label"><div class="np-dot"></div> Now Playing</div>
-    <div class="np-title" id="npTitle"></div>
-    <div class="np-desc" id="npDesc"></div>
-    <div class="np-audio"><audio id="mainPlayer" controls style="width:100%"></audio></div>
+<div class="hero">
+  <div class="hero-inner">
+    <div class="eyebrow">Executive Intelligence Podcast</div>
+    <h1>INTELLIGENCE <span>BRIEFINGS</span></h1>
+    <p class="show-desc">Senior-level analysis on AI, analytics, and enterprise strategy. Two experienced practitioners work through the decisions, incentives, and structural forces that actually matter at the executive level.</p>
+    <div class="hero-actions">
+      <button class="btn-primary" onclick="openModal('rssModal')">🎙 Subscribe via RSS</button>
+      <button class="btn-ghost" onclick="openApplePodcasts()">Open in Apple Podcasts</button>
+      <span class="ep-count-badge" id="epCountBadge">Loading...</span>
+    </div>
+  </div>
+</div>
+
+<div class="layout">
+  <div>
+    <div class="now-playing" id="nowPlaying">
+      <div class="np-label"><div class="np-pulse"></div> Now Playing</div>
+      <div class="np-title" id="npTitle"></div>
+      <div class="np-desc" id="npDesc"></div>
+      <div class="np-audio"><audio id="mainPlayer" controls style="width:100%"></audio></div>
+      <div class="np-share">
+        <button class="btn-sm" onclick="openShareForCurrent()">↗ Share This Episode</button>
+        <button class="btn-sm" onclick="linkedInCurrent()">Share on LinkedIn</button>
+      </div>
+    </div>
+
+    <div class="filter-bar">
+      <input type="text" class="search-input" id="searchInput" placeholder="Search episodes..." oninput="renderEpisodes()">
+      <button class="filter-btn active" onclick="setFilter('all',this)">All</button>
+      <button class="filter-btn" onclick="setFilter('series',this)">Series</button>
+      <button class="filter-btn" onclick="setFilter('standalone',this)">Standalone</button>
+    </div>
+
+    <div class="ep-list" id="epList">
+      <div class="empty-state"><h3>Loading...</h3></div>
+    </div>
   </div>
 
-  <!-- FILTERS -->
-  <div class="filter-bar">
-    <input type="text" class="search-input" id="searchInput" placeholder="Search episodes..." oninput="filterEpisodes()">
-    <button class="filter-btn active" onclick="setFilter('all', this)">All</button>
-    <button class="filter-btn" onclick="setFilter('series', this)">Series</button>
-    <button class="filter-btn" onclick="setFilter('standard', this)">Standalone</button>
-  </div>
+  <aside class="sidebar">
+    <div class="side-card">
+      <div class="side-label">The Hosts</div>
+      <div class="host-row">
+        <div class="host-avatar">A</div>
+        <div>
+          <div class="host-name">Alex</div>
+          <div class="host-bio">Former VP Advanced Analytics at a Fortune 100 CPG. Evidence-first. Speaks in data, patterns, and structural causes. Gets impatient with hand-waving.</div>
+        </div>
+      </div>
+      <div class="host-row">
+        <div class="host-avatar">M</div>
+        <div>
+          <div class="host-name">Morgan</div>
+          <div class="host-bio">Former strategy consultant turned operator. Thinks in decisions, consequences, and capital allocation. Names the thing everyone is thinking but not saying.</div>
+        </div>
+      </div>
+    </div>
 
-  <!-- EPISODE LIST -->
-  <div class="ep-list" id="epList">
-    <div class="empty-state"><h3>Loading episodes...</h3></div>
-  </div>
+    <div class="side-card">
+      <div class="side-label">About This Show</div>
+      <div class="about-text">
+        <p>Built for executives who already know the fundamentals. No AI introductions. No listicles. Topics selected for strategic leverage — ideas that change how you think, not just what you know.</p>
+        <p>Produced by an AI editorial engine calibrated to enterprise analytics, beverage alcohol, and executive org design. Two AI hosts debate each topic with genuine disagreement.</p>
+      </div>
+    </div>
 
-</main>
+    <div class="side-card">
+      <div class="side-label">Subscribe</div>
+      <div class="rss-url-box" id="sidebarRssUrl"></div>
+      <button class="btn-primary" style="width:100%;justify-content:center;margin-bottom:0.5rem" onclick="openModal('rssModal')">Copy RSS Feed</button>
+      <button class="btn-ghost" style="width:100%;justify-content:center" onclick="openApplePodcasts()">Apple Podcasts</button>
+    </div>
+  </aside>
+</div>
 
 <footer>
-  <p>Intelligence Briefings · <a href="/feed.xml">RSS Feed</a> · <a href="/">Production Console</a></p>
+  <p>Intelligence Briefings &middot; <a href="/feed.xml">RSS Feed</a> &middot; <a href="/">Production Console</a></p>
 </footer>
 
 <script>
 let allEpisodes = [];
 let activeFilter = 'all';
-let currentEpId = null;
-const BASE_URL = window.location.origin;
+let currentEp = null;
+const BASE = window.location.origin;
+let _shareEp = null;
+const _milestones = {};
+
+// Engagement tracking
+function trackAudio(el, title, epId) {
+  if(!el||!title) return;
+  const key = epId||title;
+  if(!_milestones[key]) _milestones[key] = new Set();
+  el.addEventListener('play', () => {
+    if(!_milestones[key].has('s')){ _milestones[key].add('s'); logEng('preview_started',title,epId); }
+  });
+  el.addEventListener('timeupdate', () => {
+    if(!el.duration) return;
+    const p = Math.floor(el.currentTime/el.duration*100);
+    for(const m of [25,50,75]) {
+      if(p>=m && !_milestones[key].has(m)){ _milestones[key].add(m); logEng('play_pct',title,epId,m); }
+    }
+  });
+  el.addEventListener('ended', () => {
+    if(!_milestones[key].has('c')){ _milestones[key].add('c'); logEng('listen_complete',title,epId); }
+  });
+}
+async function logEng(type, title, epId, pct) {
+  try { await fetch('/api/engagement',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({event_type:type,topic_title:title,episode_id:epId||null,pct:pct||null})}); } catch(e){}
+}
 
 async function init() {
-  document.getElementById('rssUrlDisplay').textContent = BASE_URL + '/feed.xml';
+  const feedUrl = BASE+'/feed.xml';
+  document.getElementById('rssUrlDisplay').textContent = feedUrl;
+  document.getElementById('sidebarRssUrl').textContent = feedUrl;
   try {
-    const data = await fetch('/api/episodes').then(r => r.json());
-    allEpisodes = (data.episodes || []).filter(e => !e.is_trailer).reverse();
-    document.getElementById('epCountLabel').textContent = allEpisodes.length + ' episode' + (allEpisodes.length !== 1 ? 's' : '');
+    const data = await fetch('/api/episodes').then(r=>r.json());
+    allEpisodes = (data.episodes||[]).filter(e=>!e.is_trailer).reverse();
+    const n = allEpisodes.length;
+    document.getElementById('epCountBadge').textContent = n+' episode'+(n!==1?'s':'');
     renderEpisodes();
   } catch(e) {
     document.getElementById('epList').innerHTML = '<div class="empty-state"><h3>Could not load episodes</h3></div>';
   }
+  trackAudio(document.getElementById('mainPlayer'), ()=>currentEp?.title, ()=>currentEp?.id);
 }
 
 function setFilter(f, btn) {
-  activeFilter = f;
-  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  activeFilter=f;
+  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
   renderEpisodes();
 }
 
-function filterEpisodes() {
-  renderEpisodes();
-}
-
-function getFilteredEpisodes() {
-  const q = document.getElementById('searchInput').value.toLowerCase().trim();
-  return allEpisodes.filter(ep => {
-    if (activeFilter === 'series' && !ep.series_id) return false;
-    if (activeFilter === 'standard' && ep.series_id) return false;
-    if (q && !ep.title.toLowerCase().includes(q) && !(ep.description || '').toLowerCase().includes(q)) return false;
+function getFiltered() {
+  const q=document.getElementById('searchInput').value.toLowerCase().trim();
+  return allEpisodes.filter(ep=>{
+    if(activeFilter==='series' && !ep.series_id) return false;
+    if(activeFilter==='standalone' && ep.series_id) return false;
+    if(q && !ep.title.toLowerCase().includes(q) && !(ep.description||'').toLowerCase().includes(q)) return false;
     return true;
   });
 }
 
 function renderEpisodes() {
-  const eps = getFilteredEpisodes();
-  const list = document.getElementById('epList');
-  if (!eps.length) {
-    list.innerHTML = '<div class="empty-state"><h3>No episodes found</h3><p>Try adjusting your search or filter.</p></div>';
-    return;
-  }
-  list.innerHTML = eps.map(ep => {
-    const date = new Date(ep.published).toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric'});
-    const isActive = ep.id === currentEpId;
-    const seriesBadge = ep.series_id ? '<span class="ep-badge series">Series</span>' : '';
-    const depthBadge = ep.depth ? `<span class="ep-badge">${ep.depth}</span>` : '';
-    const playIcon = isActive ? '▐▐' : '▶';
-    return `<div class="ep-item${isActive ? ' active' : ''}" id="epitem-${ep.id}">
-      <div class="ep-main" onclick="toggleEpisode('${ep.id}')">
-        <div class="ep-play-btn" onclick="event.stopPropagation();playEpisode('${ep.id}')">${playIcon}</div>
+  const eps=getFiltered(), list=document.getElementById('epList');
+  if(!eps.length){ list.innerHTML='<div class="empty-state"><h3>No episodes found</h3><p>Try adjusting your search or filter.</p></div>'; return; }
+  list.innerHTML=eps.map(ep=>{
+    const date=new Date(ep.published).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
+    const active=currentEp?.id===ep.id;
+    const qt=ep.title.replace(/"/g,'&quot;');
+    return `<div class="ep-item${active?' active':''}" id="epitem-${ep.id}">
+      <div class="ep-main" onclick="toggleEp('${ep.id}')">
+        <div class="ep-play" onclick="event.stopPropagation();playEp('${ep.id}')">${active?'▐▐':'▶'}</div>
         <div class="ep-info">
-          <div class="ep-title">${ep.title}</div>
-          <div class="ep-meta">
-            <span class="ep-date">${date}</span>
-            ${depthBadge}
-            ${seriesBadge}
+          <div class="ep-title-text">${ep.title}</div>
+          <div class="ep-meta-row">
+            <span class="ep-date-text">${date}</span>
+            ${ep.depth?`<span class="ep-badge">${ep.depth}</span>`:''}
+            ${ep.series_id?`<span class="ep-badge series">Series</span>`:''}
           </div>
         </div>
-        <div class="ep-expand">▾</div>
+        <div class="ep-chevron">▾</div>
       </div>
       <div class="ep-detail">
-        ${ep.description ? `<div class="ep-desc">${ep.description}</div>` : ''}
-        <div class="ep-inline-audio">
-          <audio controls src="/episodes/${ep.file}" style="width:100%;height:38px" onplay="setNowPlaying('${ep.id}')"></audio>
+        ${ep.description?`<div class="ep-desc-text">${ep.description}</div>`:''}
+        <div class="ep-inline-player">
+          <audio controls src="/episodes/${ep.file}" data-ep-id="${ep.id}" data-ep-title="${qt}"></audio>
         </div>
-        ${ep.sources && ep.sources.length ? `<div class="ep-sources">Sources: ${ep.sources.join(', ')}</div>` : ''}
+        <div class="ep-actions">
+          <button class="btn-sm" onclick="openShareFor('${ep.id}')">↗ Share</button>
+          <button class="btn-sm" onclick="linkedInFor('${ep.id}')">LinkedIn</button>
+        </div>
+        ${ep.sources&&ep.sources.length?`<div class="ep-sources-text">Sources: ${ep.sources.join(', ')}</div>`:''}
       </div>
     </div>`;
   }).join('');
+  list.querySelectorAll('audio[data-ep-id]').forEach(a=>{
+    trackAudio(a, a.dataset.epTitle, a.dataset.epId);
+    a.addEventListener('play',()=>{ const ep=allEpisodes.find(e=>e.id===a.dataset.epId); if(ep) setNowPlaying(ep,false); });
+  });
 }
 
-function toggleEpisode(epId) {
-  const el = document.getElementById('epitem-' + epId);
-  if (!el) return;
-  const isExpanded = el.classList.contains('expanded');
-  document.querySelectorAll('.ep-item.expanded').forEach(e => e.classList.remove('expanded'));
-  if (!isExpanded) el.classList.add('expanded');
+function toggleEp(id) {
+  const el=document.getElementById('epitem-'+id);
+  if(!el) return;
+  const was=el.classList.contains('expanded');
+  document.querySelectorAll('.ep-item.expanded').forEach(e=>e.classList.remove('expanded'));
+  if(!was) el.classList.add('expanded');
 }
 
-function playEpisode(epId) {
-  const ep = allEpisodes.find(e => e.id === epId);
-  if (!ep) return;
-  setNowPlaying(epId);
-  const player = document.getElementById('mainPlayer');
-  player.src = '/episodes/' + ep.file;
-  player.play();
-  // Expand the episode row too
-  const el = document.getElementById('epitem-' + epId);
-  if (el && !el.classList.contains('expanded')) el.classList.add('expanded');
+function playEp(id) {
+  const ep=allEpisodes.find(e=>e.id===id); if(!ep) return;
+  setNowPlaying(ep, true);
+  const p=document.getElementById('mainPlayer');
+  p.src='/episodes/'+ep.file;
+  p.play();
+  const el=document.getElementById('epitem-'+id);
+  if(el&&!el.classList.contains('expanded')) el.classList.add('expanded');
 }
 
-function setNowPlaying(epId) {
-  const ep = allEpisodes.find(e => e.id === epId);
-  if (!ep) return;
-  currentEpId = epId;
+function setNowPlaying(ep, updateMainPlayer) {
+  currentEp=ep;
   document.getElementById('nowPlaying').classList.add('visible');
-  document.getElementById('npTitle').textContent = ep.title;
-  document.getElementById('npDesc').textContent = ep.description || '';
-  // Update active state
-  document.querySelectorAll('.ep-item').forEach(el => el.classList.remove('active'));
-  const activeEl = document.getElementById('epitem-' + epId);
-  if (activeEl) activeEl.classList.add('active');
+  document.getElementById('npTitle').textContent=ep.title;
+  document.getElementById('npDesc').textContent=ep.description||'';
+  if(updateMainPlayer) {
+    const p=document.getElementById('mainPlayer');
+    if(p.src !== location.origin+'/episodes/'+ep.file) { p.src='/episodes/'+ep.file; }
+  }
+  document.querySelectorAll('.ep-item').forEach(el=>el.classList.remove('active'));
+  document.querySelectorAll('.ep-play').forEach(btn=>{
+    const item=btn.closest('.ep-item');
+    if(item) btn.textContent=item.id==='epitem-'+ep.id?'▐▐':'▶';
+  });
+  const el=document.getElementById('epitem-'+ep.id); if(el) el.classList.add('active');
 }
 
-function openRSSModal() { document.getElementById('rssModal').classList.add('open'); }
-function closeRSSModal() { document.getElementById('rssModal').classList.remove('open'); }
+// Main player tracking (wraps dynamic currentEp)
+const mainP=document.getElementById('mainPlayer');
+mainP.addEventListener('play',()=>{ if(currentEp) logEng('preview_started',currentEp.title,currentEp.id); });
+mainP.addEventListener('timeupdate',()=>{
+  if(!mainP.duration||!currentEp) return;
+  const p=Math.floor(mainP.currentTime/mainP.duration*100), key=currentEp.id;
+  if(!_milestones[key]) _milestones[key]=new Set();
+  for(const m of [25,50,75]) {
+    if(p>=m && !_milestones[key].has('np'+m)){ _milestones[key].add('np'+m); logEng('play_pct',currentEp.title,currentEp.id,m); }
+  }
+});
+mainP.addEventListener('ended',()=>{ if(currentEp) logEng('listen_complete',currentEp.title,currentEp.id); });
 
-function copyFeedUrl() {
-  navigator.clipboard.writeText(BASE_URL + '/feed.xml');
-  const btn = document.querySelector('.btn-copy-rss');
-  btn.textContent = '✓ Copied!';
-  setTimeout(() => btn.textContent = 'Copy Feed URL', 2000);
+// Sharing
+function openShareFor(id) {
+  _shareEp=allEpisodes.find(e=>e.id===id); if(!_shareEp) return;
+  document.getElementById('shareModalTitle').textContent=_shareEp.title;
+  document.getElementById('shareUrlDisplay').textContent=BASE+'/listen';
+  openModal('shareModal');
 }
+function openShareForCurrent() { if(currentEp) openShareFor(currentEp.id); }
+function copyShareUrl() { navigator.clipboard.writeText(BASE+'/listen'); showToast('Link copied'); }
+function shareToLinkedIn() {
+  const ep=_shareEp;
+  const text=ep?`"${ep.title}" — ${ep.description||'Executive intelligence briefing on AI and analytics strategy.'} ${BASE}/listen`:'';
+  window.open('https://www.linkedin.com/sharing/share-offsite/?url='+encodeURIComponent(BASE+'/listen')+'&summary='+encodeURIComponent(text),'_blank');
+}
+function linkedInFor(id) { _shareEp=allEpisodes.find(e=>e.id===id); shareToLinkedIn(); }
+function linkedInCurrent() { if(currentEp){ _shareEp=currentEp; shareToLinkedIn(); } }
 
-function openApplePodcasts() {
-  window.open('podcast://' + window.location.host + '/feed.xml', '_blank');
+function showToast(msg) {
+  const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2500);
 }
+function openModal(id){ document.getElementById(id).classList.add('open'); }
+function closeModal(id){ document.getElementById(id).classList.remove('open'); }
+function copyFeedUrl(){ navigator.clipboard.writeText(BASE+'/feed.xml'); showToast('Feed URL copied'); }
+function openApplePodcasts(){ window.open('podcast://'+location.host+'/feed.xml','_blank'); }
 
 init();
 </script>

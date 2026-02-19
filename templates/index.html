@@ -296,6 +296,25 @@ select { width: 100%; background: var(--surface2); border: 1px solid var(--borde
 
     <div class="tab-panel" id="tab-admin">
       <div class="admin-section">
+        <div class="admin-title">Web Search Diagnostic</div>
+        <div class="admin-desc">Verify that Anthropic web search is active on your account. Episodes use web search for current grounding — if this fails, episodes fall back to Claude's training data only.</div>
+        <div class="admin-row">
+          <button class="btn-admin" id="wsTestBtn" onclick="testWebSearch()">▶ Test Web Search</button>
+          <span class="admin-status" id="wsTestStatus"></span>
+        </div>
+        <div id="wsTestDetail" style="font-size:0.72rem;color:var(--muted);margin-top:0.4rem;line-height:1.5"></div>
+      </div>
+
+      <div class="admin-section">
+        <div class="admin-title">Engagement Signals</div>
+        <div class="admin-desc">Behavioral data used to calibrate recommendations. Improves over time as you listen, preview, and dismiss.</div>
+        <div class="admin-row">
+          <button class="btn-admin" onclick="loadEngagementStats()">↺ Refresh</button>
+        </div>
+        <div id="engagementStats" style="margin-top:0.5rem;font-size:0.75rem;color:var(--muted)">Click Refresh to load.</div>
+      </div>
+
+      <div class="admin-section">
         <div class="admin-title">Queue Management</div>
         <div class="admin-row">
           <button class="btn-admin danger" onclick="clearQueue()">✕ Clear Queue</button>
@@ -516,12 +535,66 @@ async function generateBriefing(idx) {
         btn.textContent='↺ Regenerate'; btn.disabled=false; btn.className='btn-play ready';
         if(result.sources&&result.sources.length) document.getElementById('bsrc-'+idx).textContent='Sources: '+result.sources.join(', ');
         weeklyCount++; updateCapDisplay(); loadEpisodes();
+        const audioEl = audioDiv.querySelector('audio');
+        if(audioEl) trackAudio(audioEl, topic.title, result.episode.id);
       }, err => { status.textContent='⚠ '+err; btn.disabled=false; btn.textContent='⚡ Retry'; card.classList.remove('playing'); });
   } catch(e) { status.textContent='⚠ Connection error'; btn.disabled=false; btn.textContent='⚡ Retry'; card.classList.remove('playing'); }
 }
 
+// ---------------------------------------------------------------------------
+// ENGAGEMENT TRACKING
+// ---------------------------------------------------------------------------
+
+const _trackedMilestones = {};  // ep_id -> Set of pcts already logged
+
+function trackAudio(audioEl, topicTitle, episodeId) {
+  if (!audioEl || !topicTitle) return;
+  const key = episodeId || topicTitle;
+  if (!_trackedMilestones[key]) _trackedMilestones[key] = new Set();
+
+  audioEl.addEventListener('play', () => {
+    if (!_trackedMilestones[key].has('started')) {
+      _trackedMilestones[key].add('started');
+      logEngagement('preview_started', topicTitle, episodeId);
+    }
+  });
+
+  audioEl.addEventListener('timeupdate', () => {
+    if (!audioEl.duration) return;
+    const pct = Math.floor((audioEl.currentTime / audioEl.duration) * 100);
+    for (const milestone of [25, 50, 75]) {
+      if (pct >= milestone && !_trackedMilestones[key].has(milestone)) {
+        _trackedMilestones[key].add(milestone);
+        logEngagement('play_pct', topicTitle, episodeId, milestone);
+      }
+    }
+  });
+
+  audioEl.addEventListener('ended', () => {
+    if (!_trackedMilestones[key].has('complete')) {
+      _trackedMilestones[key].add('complete');
+      logEngagement('listen_complete', topicTitle, episodeId);
+    }
+  });
+}
+
+async function logEngagement(eventType, topicTitle, episodeId, pct) {
+  try {
+    await fetch('/api/engagement', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({event_type: eventType, topic_title: topicTitle, episode_id: episodeId || null, pct: pct || null})
+    });
+  } catch(e) { /* non-fatal */ }
+}
+
 function getDismissed() { try { return JSON.parse(localStorage.getItem('dismissed_topics')||'[]'); } catch(e) { return []; } }
-function addDismissed(title) { const d=getDismissed(); if(!d.includes(title)) d.push(title); localStorage.setItem('dismissed_topics',JSON.stringify(d)); }
+function addDismissed(title) {
+  const d=getDismissed();
+  if(!d.includes(title)) d.push(title);
+  localStorage.setItem('dismissed_topics', JSON.stringify(d));
+  logEngagement('dismissed', title);  // log to server for recommendation model
+}
 
 // ---- DISCOVER: Suggestions ("You Might Be Interested") ----
 let allSuggestions = [];
@@ -660,7 +733,9 @@ async function previewTopicByTitle(safeTitle) {
     if(!data.success){btn.textContent='▶ 90s';btn.disabled=false;status.textContent='⚠ '+(data.error||'Error');status.className='tc-status err';return;}
     pollJob(data.job_id, msg=>status.textContent=msg,
       result=>{btn.textContent='▶ Replay';btn.disabled=false;status.textContent='';
-        document.getElementById('ta-'+safeTitle).innerHTML=`<audio controls src="/episodes/${result.episode.file}" style="width:100%;height:32px;margin-top:0.3rem"></audio>`;},
+        document.getElementById('ta-'+safeTitle).innerHTML=`<audio controls src="/episodes/${result.episode.file}" style="width:100%;height:32px;margin-top:0.3rem"></audio>`;
+        const previewAudio = document.getElementById('ta-'+safeTitle).querySelector('audio');
+        if(previewAudio) trackAudio(previewAudio, decodeURIComponent(safeTitle), result.episode.id);},
       err=>{btn.textContent='▶ 90s';btn.disabled=false;status.textContent='⚠ '+err;status.className='tc-status err';});
   } catch(e){btn.textContent='▶ 90s';btn.disabled=false;status.textContent='⚠ Connection error';status.className='tc-status err';}
 }
@@ -805,20 +880,72 @@ async function loadEpisodes() {
     const list=document.getElementById('episodesList');
     if(!full.length){list.innerHTML='<div class="empty-state">No episodes yet.</div>';return;}
     list.innerHTML=full.map(ep=>`
-      <div class="ep-item">
-        <div class="ep-title">${ep.title}</div>
-        <div class="ep-meta">
-          <span class="ep-badge">${ep.depth||'Standard'}</span>
-          ${ep.series_id?`<span class="ep-badge" style="border-color:rgba(52,152,219,0.3);color:#3498db">Series</span>`:''}
-          <span class="ep-date">${new Date(ep.published).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</span>
+      <div class="ep-item" id="epitem-${ep.id}">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:0.5rem">
+          <div style="flex:1">
+            <div class="ep-title">${ep.title}</div>
+            <div class="ep-meta">
+              <span class="ep-badge">${ep.depth||'Standard'}</span>
+              ${ep.series_id?`<span class="ep-badge" style="border-color:rgba(52,152,219,0.3);color:#3498db">Series</span>`:''}
+              <span class="ep-date">${new Date(ep.published).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</span>
+            </div>
+          </div>
+          <button onclick="deleteEpisode('${ep.id}', this)" style="background:transparent;border:1px solid var(--border);border-radius:3px;color:var(--muted);font-family:'Rajdhani',sans-serif;font-size:0.65rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;padding:4px 8px;cursor:pointer;flex-shrink:0;transition:all 0.2s" onmouseover="this.style.color='var(--red-bright)';this.style.borderColor='var(--red-bright)'" onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--border)'">✕ Delete</button>
         </div>
-        <audio controls src="/episodes/${ep.file}"></audio>
+        <audio controls src="/episodes/${ep.file}" data-ep-id="${ep.id}" data-ep-title="${ep.title.replace(/"/g,'&quot;')}"></audio>
         ${ep.sources&&ep.sources.length?`<div class="ep-sources">Sources: ${ep.sources.join(', ')}</div>`:''}
-      </div>`).join('');
+      </div>`).join('');\n    // Wire engagement tracking to all episode audio players
+    list.querySelectorAll('audio[data-ep-id]').forEach(a => {
+      trackAudio(a, a.dataset.epTitle, a.dataset.epId);
+    });
   } catch(e){}
 }
 
-async function refreshQueue() {
+async function testWebSearch() {
+  const btn=document.getElementById('wsTestBtn'), status=document.getElementById('wsTestStatus'), detail=document.getElementById('wsTestDetail');
+  btn.disabled=true; status.textContent='Testing...'; detail.textContent='';
+  const data = await fetch('/api/test/web-search').then(r=>r.json()).catch(()=>({success:false,error:'Connection error'}));
+  btn.disabled=false;
+  if(data.success) {
+    status.textContent = data.web_search_invoked ? '✓ Web search active' : '⚠ Call ok, search not invoked';
+    status.style.color = data.web_search_invoked ? 'var(--green)' : 'var(--amber)';
+    detail.textContent = data.note || '';
+  } else {
+    status.textContent = '✕ Failed';
+    status.style.color = 'var(--red-bright)';
+    detail.textContent = (data.likely_cause || '') + (data.error ? ' — ' + data.error : '');
+  }
+}
+
+async function loadEngagementStats() {
+  const el = document.getElementById('engagementStats');
+  el.textContent = 'Loading...';
+  const data = await fetch('/api/engagement').then(r=>r.json()).catch(()=>null);
+  if(!data) { el.textContent = 'Could not load.'; return; }
+  const strong = data.strong_interest || [], mod = data.moderate_interest || [], dismissed = data.dismissed || [];
+  if(!strong.length && !mod.length && !dismissed.length) { el.textContent = 'No engagement data yet — start listening.'; return; }
+  el.innerHTML = [
+    strong.length ? `<div style="margin-bottom:0.4rem"><span style="color:var(--green);font-family:Rajdhani,sans-serif;font-size:0.65rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase">Strong (75%+ listened)</span><br>${strong.map(t=>`<div style="padding:2px 0;color:var(--white)">${t}</div>`).join('')}</div>` : '',
+    mod.length ? `<div style="margin-bottom:0.4rem"><span style="color:var(--amber);font-family:Rajdhani,sans-serif;font-size:0.65rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase">Moderate (previewed)</span><br>${mod.map(t=>`<div style="padding:2px 0">${t}</div>`).join('')}</div>` : '',
+    dismissed.length ? `<div><span style="color:var(--muted);font-family:Rajdhani,sans-serif;font-size:0.65rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase">Dismissed</span><br>${dismissed.map(t=>`<div style="padding:2px 0">${t}</div>`).join('')}</div>` : '',
+  ].filter(Boolean).join('');
+}
+
+async function deleteEpisode(epId, btn) {
+  if(!confirm('Delete this episode? This cannot be undone.')) return;
+  btn.textContent = '...'; btn.disabled = true;
+  const data = await fetch('/api/episodes/' + epId, {method:'DELETE'})
+    .then(r=>r.json()).catch(()=>({success:false,error:'Connection error'}));
+  if(data.success) {
+    const item = document.getElementById('epitem-' + epId);
+    if(item) item.remove();
+    document.getElementById('episodeCount').textContent =
+      parseInt(document.getElementById('episodeCount').textContent || '1') - 1;
+  } else {
+    btn.textContent = '✕ Delete'; btn.disabled = false;
+    alert('Delete failed: ' + (data.error || 'Unknown error'));
+  }
+}
   try {
     const data=await fetch('/api/queue').then(r=>r.json());
     const active=data.active||[];

@@ -17,6 +17,86 @@ EPISODES_JSON = DATA_DIR / "episodes.json"
 PRODUCTION_LOG = DATA_DIR / "production_log.json"
 JOBS_FILE = DATA_DIR / "jobs.json"
 SERIES_FILE = DATA_DIR / "series.json"
+ENGAGEMENT_LOG = DATA_DIR / "engagement_log.json"
+
+# ---------------------------------------------------------------------------
+# ENGAGEMENT LOG
+# ---------------------------------------------------------------------------
+
+_engagement_lock = threading.Lock()
+
+def load_engagement():
+    if not ENGAGEMENT_LOG.exists():
+        return []
+    try:
+        return json.loads(ENGAGEMENT_LOG.read_text())
+    except Exception:
+        return []
+
+def save_engagement_event(event_type, topic_title, episode_id=None, pct=None, extra=None):
+    """
+    Log a behavioral signal.
+    event_types: play_pct | listen_complete | preview_started | commissioned | dismissed
+    """
+    event = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "event_type": event_type,
+        "topic_title": topic_title,
+    }
+    if episode_id: event["episode_id"] = episode_id
+    if pct is not None: event["pct"] = pct
+    if extra: event.update(extra)
+    with _engagement_lock:
+        events = load_engagement()
+        events.append(event)
+        # Keep last 2000 events
+        if len(events) > 2000:
+            events = events[-2000:]
+        ENGAGEMENT_LOG.write_text(json.dumps(events, indent=2))
+
+def get_engagement_summary():
+    """
+    Summarize engagement signals for use in recommendation prompts.
+    Returns a structured dict of signals bucketed by strength.
+    """
+    events = load_engagement()
+    if not events:
+        return {}
+
+    from collections import defaultdict
+    topic_signals = defaultdict(lambda: {
+        "previewed": False, "commissioned": False, "dismissed": False,
+        "max_pct": 0, "listen_complete": False
+    })
+
+    for e in events:
+        t = e.get("topic_title", "")
+        if not t: continue
+        et = e.get("event_type", "")
+        if et == "preview_started":
+            topic_signals[t]["previewed"] = True
+        elif et == "commissioned":
+            topic_signals[t]["commissioned"] = True
+        elif et == "dismissed":
+            topic_signals[t]["dismissed"] = True
+        elif et == "play_pct":
+            topic_signals[t]["max_pct"] = max(topic_signals[t]["max_pct"], e.get("pct", 0))
+        elif et == "listen_complete":
+            topic_signals[t]["listen_complete"] = True
+            topic_signals[t]["max_pct"] = 100
+
+    strong_interest = [t for t, s in topic_signals.items()
+                       if s["listen_complete"] or s["max_pct"] >= 75]
+    moderate_interest = [t for t, s in topic_signals.items()
+                         if not s["dismissed"] and (s["previewed"] or s["max_pct"] >= 25)
+                         and t not in strong_interest]
+    dismissed = [t for t, s in topic_signals.items() if s["dismissed"]]
+
+    return {
+        "strong_interest": strong_interest[-20:],
+        "moderate_interest": moderate_interest[-20:],
+        "dismissed": dismissed[-30:],
+    }
 
 ELEVEN_API_KEY = os.environ.get("ELEVEN_LABS_API_KEY") or os.environ.get("ELEVENLABS_API_KEY", "")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
@@ -857,6 +937,103 @@ def _run_create_series(series_id, topic_or_prompt, num_episodes, voice_alex, voi
 # ROUTES
 # ---------------------------------------------------------------------------
 
+@app.route('/api/engagement')
+def api_engagement_summary():
+    """Return engagement summary for debugging/display."""
+    return jsonify(get_engagement_summary())
+
+@app.route('/api/engagement', methods=['POST'])
+def api_engagement_log():
+    """
+    Log a behavioral signal from the frontend.
+    Body: { event_type, topic_title, episode_id?, pct? }
+    """
+    data = request.json or {}
+    event_type = data.get("event_type", "")
+    topic_title = data.get("topic_title", "")
+    if not event_type or not topic_title:
+        return jsonify({"success": False, "error": "event_type and topic_title required"}), 400
+    save_engagement_event(
+        event_type=event_type,
+        topic_title=topic_title,
+        episode_id=data.get("episode_id"),
+        pct=data.get("pct"),
+    )
+    return jsonify({"success": True})
+
+
+@app.route('/api/episodes/<ep_id>', methods=['DELETE'])
+def api_episode_delete(ep_id):
+    """Delete an episode: removes from episodes.json, deletes MP3, rebuilds RSS."""
+    eps = load_episodes()
+    target = next((e for e in eps if e.get("id") == ep_id), None)
+    if not target:
+        return jsonify({"success": False, "error": "Episode not found"}), 404
+
+    # Remove from list
+    eps = [e for e in eps if e.get("id") != ep_id]
+    EPISODES_JSON.write_text(json.dumps(eps, indent=2))
+
+    # Delete MP3 file
+    mp3_path = EPISODES_DIR / target.get("file", "")
+    if mp3_path.exists():
+        try:
+            mp3_path.unlink()
+        except Exception as e:
+            print(f"[DELETE] Could not remove file {mp3_path}: {e}")
+
+    # Delete segment directory if it exists
+    seg_dir = EPISODES_DIR / ep_id
+    if seg_dir.is_dir():
+        try:
+            shutil.rmtree(seg_dir)
+        except Exception as e:
+            print(f"[DELETE] Could not remove dir {seg_dir}: {e}")
+
+    try:
+        build_feed()
+    except Exception as e:
+        print(f"[DELETE] Feed rebuild failed (non-fatal): {e}")
+
+    print(f"[DELETE] Removed episode {ep_id}: {target.get('title', '')}")
+    return jsonify({"success": True, "deleted": ep_id, "title": target.get("title", "")})
+
+
+@app.route('/api/test/web-search')
+def api_test_web_search():
+    """
+    Test whether web search is working for this Anthropic account.
+    Runs a minimal search call and reports success/failure with diagnostics.
+    """
+    test_prompt = "What is today's date? Answer in one sentence."
+    try:
+        data = call_anthropic(
+            [{"role": "user", "content": test_prompt}],
+            max_tokens=100,
+            use_web_search=True
+        )
+        text = extract_text(data)
+        # Check if web_search tool was actually invoked
+        tool_uses = [b for b in data.get("content", []) if b.get("type") == "tool_use"]
+        search_used = any(b.get("name") == "web_search" for b in tool_uses)
+        return jsonify({
+            "success": True,
+            "web_search_invoked": search_used,
+            "response_preview": text[:200],
+            "stop_reason": data.get("stop_reason"),
+            "note": "Web search is working" if search_used else "Call succeeded but web search was not invoked — Claude may not have needed it for this query"
+        })
+    except Exception as e:
+        error_str = str(e)
+        billing = any(kw in error_str.lower() for kw in ["credit", "quota", "billing", "unauthorized", "403", "permission"])
+        return jsonify({
+            "success": False,
+            "web_search_invoked": False,
+            "error": error_str,
+            "likely_cause": "Billing/permissions issue — check Anthropic account has web search beta access" if billing else "API error",
+        }), 500
+
+
 @app.route('/api/health')
 def api_health():
     """
@@ -1035,6 +1212,12 @@ def api_discover_suggestions():
     exclusion_block = "\n".join(f"- {t}" for t in all_exclusions) if all_exclusions else "None yet."
     series_block = "\n".join(f"- {t}" for t in series_titles) if series_titles else "None yet."
 
+    # Engagement signals
+    eng = get_engagement_summary()
+    strong_block = "\n".join(f"- {t}" for t in eng.get("strong_interest", [])) or "None yet."
+    moderate_block = "\n".join(f"- {t}" for t in eng.get("moderate_interest", [])) or "None yet."
+    dismissed_block = "\n".join(f"- {t}" for t in eng.get("dismissed", [])) or "None yet."
+
     prompt = f"""You are an editorial intelligence engine for a senior analytics/AI executive (CAO at Overproof, former VP Analytics at Diageo North America).
 
 Generate 10 high-signal topic ideas that are NEW and DISTINCT from everything already covered.
@@ -1045,6 +1228,16 @@ ALREADY COVERED — DO NOT GENERATE ANYTHING SIMILAR TO THESE:
 SERIES ARCS IN PROGRESS:
 {series_block}
 
+BEHAVIORAL SIGNALS — USE THESE TO CALIBRATE RECOMMENDATIONS:
+Strong interest (listened 75%+ or completed): Generate topics that go DEEPER or adjacent to these.
+{strong_block}
+
+Moderate interest (previewed or partially listened): Good signal for adjacent angles.
+{moderate_block}
+
+Dismissed (explicitly not interested): AVOID topics in this territory.
+{dismissed_block}
+
 EXECUTIVE PROFILE:
 - Thinks in systems, incentives, capital allocation, and moats
 - Enterprise AI: governance, multi-agent systems, ROI measurement
@@ -1054,6 +1247,8 @@ EXECUTIVE PROFILE:
 
 RULES:
 - Every topic must be meaningfully distinct from the exclusion list
+- Weight toward strong_interest adjacencies — these are proven signals
+- Do NOT generate anything in the dismissed territory
 - Include 2-3 trending topics from the last 30 days
 - Contrarian angle required — challenges comfortable consensus
 - Zero generic AI hype topics
@@ -1065,7 +1260,7 @@ Return ONLY a valid JSON array of exactly 10 objects, no markdown, no preamble:
   "tension": "core contrarian thesis in 1-2 sentences",
   "why_it_matters": "strategic importance for this specific executive in 1 sentence",
   "freshness": "evergreen | trending | time-sensitive",
-  "confidence_rationale": "1 sentence: why this is highly relevant to this user specifically"
+  "confidence_rationale": "1 sentence: why this maps to your demonstrated interests"
 }}]"""
 
     try:
@@ -1145,22 +1340,38 @@ def api_cron_nightly_trailers():
     exclusion_block = "\n".join(f"- {t}" for t in all_exclusions) if all_exclusions else "None yet."
     series_block = "\n".join(f"- {t}" for t in series_titles) if series_titles else "None yet."
 
+    # Engagement signals for precision targeting
+    eng = get_engagement_summary()
+    strong_block = "\n".join(f"- {t}" for t in eng.get("strong_interest", [])) or "None yet."
+    moderate_block = "\n".join(f"- {t}" for t in eng.get("moderate_interest", [])) or "None yet."
+    dismissed_block = "\n".join(f"- {t}" for t in eng.get("dismissed", [])) or "None yet."
+
     prompt = f"""You are a high-precision editorial recommender for a senior analytics/AI executive (CAO at Overproof, former VP Analytics Diageo North America).
 
-Your task: Generate exactly 6 topic candidates for overnight trailer production. These must be topics you are HIGHLY CONFIDENT this specific executive will want to hear when they wake up, AND must be distinct from everything already covered.
+Your task: Generate exactly 6 topic candidates for overnight trailer production. These must be topics you are HIGHLY CONFIDENT this specific executive will want to hear when they wake up.
 
-CONFIDENCE CRITERIA (use all of these):
-1. Direct adjacency to their history — deepens or challenges something they already engaged with
-2. Emerging situation in their domain (enterprise AI, beverage alcohol, analytics org design) from the last 2-4 weeks
-3. High decision leverage — something they could act on or discuss in a board/C-suite context within 30 days
-4. Contrarian angle — challenges a comfortable belief held by their peer set
+CONFIDENCE CRITERIA:
+1. Proven behavioral adjacency — topics near what they've listened to deeply are highest confidence
+2. Emerging situation in their domain from the last 2-4 weeks
+3. High decision leverage — board/C-suite actionable within 30 days
+4. Contrarian angle — challenges comfortable consensus among their peer set
 5. Genuine relevance to their job search (CAO/CDO/VP Analytics positioning)
 
-ALREADY COVERED — DO NOT GENERATE ANYTHING SIMILAR (includes today's editorial topics):
+ALREADY COVERED — DO NOT GENERATE ANYTHING SIMILAR:
 {exclusion_block}
 
 SERIES ARCS IN PROGRESS:
 {series_block}
+
+BEHAVIORAL SIGNALS (actual listen data — weight these heavily):
+Strong interest — listened 75%+ or completed. Generate adjacent/deeper topics here:
+{strong_block}
+
+Moderate interest — previewed or partial listen. Good signal:
+{moderate_block}
+
+Dismissed — explicitly rejected. Stay away from this territory:
+{dismissed_block}
 
 EXECUTIVE PROFILE:
 - Ed Dobbles, CAO at Overproof (beverage alcohol AI/analytics)
@@ -1168,13 +1379,13 @@ EXECUTIVE PROFILE:
 - Building multi-agent AI governance frameworks
 - Enterprise deals with Heineken, Beam Suntory, Diageo
 - Thinks in systems, incentives, moats, capital allocation
-- C-suite peer network: CDOs, CAOs, VPs Analytics at Fortune 500
 
 CONSTRAINTS:
-- All 6 must clear a HIGH confidence bar — if you're not sure, don't include it
+- All 6 must clear a HIGH confidence bar
+- Topics near strong_interest adjacencies get priority over generic domain topics
+- NEVER generate anything in the dismissed territory
 - Mix: 2-3 enterprise AI/governance, 1-2 beverage alcohol/CPG, 1-2 org/talent/career
-- Include at least 2 topics that feel TIME-SENSITIVE (relevant to the next 30 days)
-- Each topic needs a spoken-word trailer hook that makes an executive stop what they're doing
+- At least 2 TIME-SENSITIVE topics (next 30 days)
 
 Return ONLY a valid JSON array of exactly 6 objects, no markdown:
 [{{
@@ -1186,7 +1397,7 @@ Return ONLY a valid JSON array of exactly 6 objects, no markdown:
   "sub_questions": ["question 1", "question 2", "question 3"],
   "trailer_hook": "3-4 sentence spoken-word hook, direct to a peer executive",
   "confidence_score": 85,
-  "confidence_rationale": "1-2 sentences: specific reason this is high-confidence for this user"
+  "confidence_rationale": "1-2 sentences: specific reason this is high-confidence — cite the behavioral signal if applicable"
 }}]"""
 
     try:
