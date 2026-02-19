@@ -34,10 +34,6 @@ def load_engagement():
         return []
 
 def save_engagement_event(event_type, topic_title, episode_id=None, pct=None, extra=None):
-    """
-    Log a behavioral signal.
-    event_types: play_pct | listen_complete | preview_started | commissioned | dismissed
-    """
     event = {
         "ts": datetime.now(timezone.utc).isoformat(),
         "event_type": event_type,
@@ -49,16 +45,11 @@ def save_engagement_event(event_type, topic_title, episode_id=None, pct=None, ex
     with _engagement_lock:
         events = load_engagement()
         events.append(event)
-        # Keep last 2000 events
         if len(events) > 2000:
             events = events[-2000:]
         ENGAGEMENT_LOG.write_text(json.dumps(events, indent=2))
 
 def get_engagement_summary():
-    """
-    Summarize engagement signals for use in recommendation prompts.
-    Returns a structured dict of signals bucketed by strength.
-    """
     events = load_engagement()
     if not events:
         return {}
@@ -100,7 +91,7 @@ def get_engagement_summary():
 
 ELEVEN_API_KEY = os.environ.get("ELEVEN_LABS_API_KEY") or os.environ.get("ELEVENLABS_API_KEY", "")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-CRON_SECRET = os.environ.get("CRON_SECRET", "")  # Set in Railway — used to authenticate scheduled jobs
+CRON_SECRET = os.environ.get("CRON_SECRET", "")
 WEEKLY_CAP = 50
 
 BASE_URL = os.environ.get("BASE_URL", "https://intelligence-briefings-production.up.railway.app")
@@ -166,7 +157,6 @@ def get_all_jobs():
         return _load_jobs()
 
 def clear_queue():
-    """Remove all queued and error jobs. Leave running and done."""
     with _jobs_lock:
         jobs = _load_jobs()
         cleared = 0
@@ -236,11 +226,11 @@ Return ONLY a valid JSON array of 6 objects, no markdown:
 
 FALLBACK_TOPICS = [
     {"rank":1,"title":"The Governance Tax: Why Most Enterprise AI Programs Are Paying for Risk They've Already Accepted","tension":"Organizations build elaborate AI governance frameworks after already deploying high-risk systems. The governance comes after the exposure, not before it.","why_it_matters":"Misaligned governance timing creates compliance theater that burns budget without reducing actual risk.","common_mistake":"Leaders treat governance as a launch gate rather than a continuous risk calibration process, which means controls are always one deployment behind actual exposure.","sub_questions":["At what point does governance reduce risk versus just document it?","How do you price retroactive governance versus pre-deployment friction?","What incentive structures cause governance teams to prioritize documentation over risk reduction?"],"trailer_hook":"Here's something nobody in your governance steering committee wants to say out loud: most enterprise AI governance programs are retroactive. You've already deployed the models. You've already accepted the risk. The frameworks you're building now are documentation for decisions already made. The real question is whether your governance creates actual risk reduction or just paper trails."},
-    {"rank":2,"title":"Agentic AI Broke Your ROI Model — And Your CFO Doesn't Know It Yet","tension":"Traditional ROI frameworks measure discrete outputs. Agentic AI generates value through non-linear, compounding processes largely invisible to standard measurement.","why_it_matters":"Executives who can't articulate agentic AI ROI in CFO terms will lose the budget war.","common_mistake":"Most analytics leaders retrofit agentic AI value into hours-saved metrics, which systematically undervalues compounding effects and undermines the investment case.","sub_questions":["What's the right unit of measurement for a system that improves its own decision quality over time?","How do you present agentic ROI to a CFO trained on capital budgeting?","What's the opportunity cost of NOT deploying agents while competitors do?"],"trailer_hook":"You cannot measure agentic AI the way you measured your last analytics platform. The value is in the loops — decisions made faster, signals never caught, systems learning at 3am. Your current ROI model was built for batch reporting. If you're still presenting AI value as hours-saved, you're losing the budget argument before it starts."},
-    {"rank":3,"title":"The Data Moat Is Dead — What Replaces It as Strategic Advantage","tension":"For a decade, proprietary data was the defensible edge. Foundation models have commoditized data advantage faster than most executives have internalized.","why_it_matters":"Executives investing in data hoarding instead of workflow integration are building walls around empty vaults.","common_mistake":"Leaders conflate data volume with data advantage, not recognizing scarcity has shifted from data to operational judgment.","sub_questions":["What does a defensible moat look like when foundation models approximate your proprietary knowledge?","How do you communicate the shift from data strategy to workflow strategy to a board that funded the data lake?","Where does first-party behavioral data still create genuine asymmetry?"],"trailer_hook":"The data moat argument used to work. You had the data, competitors didn't, you had the edge. That logic is collapsing. When foundation models synthesize industry knowledge from public sources that rivals your proprietary training data, the moat isn't the data. The moat is the workflow."},
-    {"rank":4,"title":"Beverage Alcohol's Data Silence Problem: Why the Industry Knows Less Than It Should","tension":"Despite massive distribution networks and decades of sell-through data, beverage alcohol remains one of the most information-asymmetric industries in CPG — by design.","why_it_matters":"The next competitive wave belongs to operators who solve the last-mile data problem, not those who spend more on brand.","common_mistake":"Brand teams treat the data gap as a vendor problem when the actual barrier is three-tier incentive misalignment no data provider can fix.","sub_questions":["What would real-time venue-level visibility require in a three-tier system?","Where does menu scraping create actionable intelligence that replaces missing sell-through data?","What's the strategic value of knowing venue penetration before competitors do?"],"trailer_hook":"The beverage alcohol industry sits on a paradox. Trillion-dollar brands. Global distribution. And almost no reliable real-time data on what's happening at venue level. The three-tier system was designed to create information asymmetry. That changes when AI reads menus at scale."},
+    {"rank":2,"title":"Agentic AI Broke Your ROI Model - And Your CFO Doesn't Know It Yet","tension":"Traditional ROI frameworks measure discrete outputs. Agentic AI generates value through non-linear, compounding processes largely invisible to standard measurement.","why_it_matters":"Executives who can't articulate agentic AI ROI in CFO terms will lose the budget war.","common_mistake":"Most analytics leaders retrofit agentic AI value into hours-saved metrics, which systematically undervalues compounding effects and undermines the investment case.","sub_questions":["What's the right unit of measurement for a system that improves its own decision quality over time?","How do you present agentic ROI to a CFO trained on capital budgeting?","What's the opportunity cost of NOT deploying agents while competitors do?"],"trailer_hook":"You cannot measure agentic AI the way you measured your last analytics platform. The value is in the loops - decisions made faster, signals never caught, systems learning at 3am. Your current ROI model was built for batch reporting. If you're still presenting AI value as hours-saved, you're losing the budget argument before it starts."},
+    {"rank":3,"title":"The Data Moat Is Dead - What Replaces It as Strategic Advantage","tension":"For a decade, proprietary data was the defensible edge. Foundation models have commoditized data advantage faster than most executives have internalized.","why_it_matters":"Executives investing in data hoarding instead of workflow integration are building walls around empty vaults.","common_mistake":"Leaders conflate data volume with data advantage, not recognizing scarcity has shifted from data to operational judgment.","sub_questions":["What does a defensible moat look like when foundation models approximate your proprietary knowledge?","How do you communicate the shift from data strategy to workflow strategy to a board that funded the data lake?","Where does first-party behavioral data still create genuine asymmetry?"],"trailer_hook":"The data moat argument used to work. You had the data, competitors didn't, you had the edge. That logic is collapsing. When foundation models synthesize industry knowledge from public sources that rivals your proprietary training data, the moat isn't the data. The moat is the workflow."},
+    {"rank":4,"title":"Beverage Alcohol's Data Silence Problem: Why the Industry Knows Less Than It Should","tension":"Despite massive distribution networks and decades of sell-through data, beverage alcohol remains one of the most information-asymmetric industries in CPG - by design.","why_it_matters":"The next competitive wave belongs to operators who solve the last-mile data problem, not those who spend more on brand.","common_mistake":"Brand teams treat the data gap as a vendor problem when the actual barrier is three-tier incentive misalignment no data provider can fix.","sub_questions":["What would real-time venue-level visibility require in a three-tier system?","Where does menu scraping create actionable intelligence that replaces missing sell-through data?","What's the strategic value of knowing venue penetration before competitors do?"],"trailer_hook":"The beverage alcohol industry sits on a paradox. Trillion-dollar brands. Global distribution. And almost no reliable real-time data on what's happening at venue level. The three-tier system was designed to create information asymmetry. That changes when AI reads menus at scale."},
     {"rank":5,"title":"Why Your Best Analysts Are Training Their Own Replacements","tension":"High-performing analysts who adopt AI are simultaneously commoditizing their own skills and becoming the most irreplaceable people in the organization.","why_it_matters":"Analytics talent strategy needs a complete rethink as the skill premium shifts from technical execution to system design.","common_mistake":"Analytics leaders protect headcount by resisting AI adoption, creating conditions for their function to be outsourced once leadership runs the math on AI-enabled generalists.","sub_questions":["What's the right ratio of AI-augmented analysts to traditional FTEs?","What skills are you hiring for in 2026 that didn't exist as a category in 2022?","How do you restructure performance management when AI handles most measurable output?"],"trailer_hook":"Your best analyst just used Claude to do in 20 minutes what used to take two weeks. You've repriced their labor market value downward and upward simultaneously. The person who knows how to direct AI toward the right problem is extraordinarily rare. How you respond to that tension will determine whether your analytics function compounds or collapses."},
-    {"rank":6,"title":"The CAO Role Is Disappearing — What Comes Next Is More Powerful and Harder to Fill","tension":"The Chief Analytics Officer title is being absorbed into CAIO, CDO, and CTO roles — but the executive who translates AI capability into business strategy has never been more scarce.","why_it_matters":"Analytics leaders who define themselves by function rather than strategic value will find their seats eliminated in the next org redesign.","common_mistake":"CAOs defend their role by proving team output rather than positioning themselves as the interpreter between AI capability and board-level strategy.","sub_questions":["What's the actual job description of the executive who owns AI strategy in a post-CAO structure?","How do you transition from functional leader to strategic interpreter before the title disappears?","How do you build the board relationship that makes you essential regardless of title?"],"trailer_hook":"The CAO title is getting squeezed from three directions — Chief AI Officers taking the forward mandate, CDOs absorbing governance, CTOs claiming infrastructure. If your value proposition is 'I run the analytics function,' that's a shrinking job. If it's 'I make AI investments legible to the board,' that role has never been more critical or more vacant."}
+    {"rank":6,"title":"The CAO Role Is Disappearing - What Comes Next Is More Powerful and Harder to Fill","tension":"The Chief Analytics Officer title is being absorbed into CAIO, CDO, and CTO roles - but the executive who translates AI capability into business strategy has never been more scarce.","why_it_matters":"Analytics leaders who define themselves by function rather than strategic value will find their seats eliminated in the next org redesign.","common_mistake":"CAOs defend their role by proving team output rather than positioning themselves as the interpreter between AI capability and board-level strategy.","sub_questions":["What's the actual job description of the executive who owns AI strategy in a post-CAO structure?","How do you transition from functional leader to strategic interpreter before the title disappears?","How do you build the board relationship that makes you essential regardless of title?"],"trailer_hook":"The CAO title is getting squeezed from three directions - Chief AI Officers taking the forward mandate, CDOs absorbing governance, CTOs claiming infrastructure. If your value proposition is 'I run the analytics function,' that's a shrinking job. If it's 'I make AI investments legible to the board,' that role has never been more critical or more vacant."}
 ]
 
 AR_DASHBOARD_URL = "https://ar-intelligence-dashboard-production.up.railway.app/"
@@ -358,7 +348,6 @@ def generate_topics_via_claude():
 # ---------------------------------------------------------------------------
 
 def autoqueue_ar_topic(voice_alex, voice_morgan):
-    """Pull latest AR intelligence, generate a topic, queue it for production."""
     try:
         ar_data = fetch_ar_intelligence()
         if not ar_data:
@@ -366,7 +355,7 @@ def autoqueue_ar_topic(voice_alex, voice_morgan):
             return None
 
         ar_text = "\n\n".join(f"{k.upper()}:\n{v}" for k, v in ar_data.items())
-        prompt = f"""You are an editorial producer. Based on this live competitive intelligence, 
+        prompt = f"""You are an editorial producer. Based on this live competitive intelligence,
 generate the single most actionable topic for an executive analytics podcast.
 
 {ar_text}
@@ -398,7 +387,7 @@ Return a SINGLE topic as valid JSON (no markdown):
                   topic.get("production_brief", "")),
             daemon=True
         ).start()
-        print(f"[AUTOQUEUE] Queued AR topic: {topic['title']} → job {job_id}")
+        print(f"[AUTOQUEUE] Queued AR topic: {topic['title']} -> job {job_id}")
         return job_id
     except Exception as e:
         print(f"[AUTOQUEUE] Failed: {e}")
@@ -417,23 +406,18 @@ def save_series(series_list):
     SERIES_FILE.write_text(json.dumps(series_list, indent=2))
 
 def generate_series_outline(topic_or_prompt, num_episodes=6):
-    """
-    Generate a coherent N-episode arc on a topic.
-    topic_or_prompt: either a topic dict or a plain string prompt/URL.
-    Returns list of episode topic dicts with series_context field.
-    """
     if isinstance(topic_or_prompt, dict):
         seed = f"TOPIC: {topic_or_prompt['title']}\nTENSION: {topic_or_prompt.get('tension','')}"
     else:
         seed = f"PROMPT/SOURCE: {topic_or_prompt}"
 
-    prompt = f"""You are an executive podcast series producer. 
+    prompt = f"""You are an executive podcast series producer.
 Create a {num_episodes}-episode deep-dive series arc for a senior analytics and AI executive.
 
 SEED:
 {seed}
 
-Design a progressive series where each episode builds on the previous. 
+Design a progressive series where each episode builds on the previous.
 Episode 1 = executive overview (the what and why).
 Episodes 2-{num_episodes-1} = progressively deeper angles (mechanisms, case studies, frameworks, edge cases, implications).
 Episode {num_episodes} = synthesis and forward view (what to do, what comes next).
@@ -466,7 +450,6 @@ Return ONLY a valid JSON array of {num_episodes} topic objects, no markdown:
         raise
 
 def _run_series(series_id, episodes, voice_alex, voice_morgan):
-    """Background worker: generate all episodes in a series sequentially."""
     series_list = load_series()
     series_entry = next((s for s in series_list if s["id"] == series_id), None)
     if not series_entry:
@@ -480,10 +463,9 @@ def _run_series(series_id, episodes, voice_alex, voice_morgan):
             update_job(job_id, status="running",
                        progress=f"Episode {ep_num}/{len(episodes)}: Writing script...")
 
-            # Add series context to production brief
             production_brief = ep_topic.get("series_context", "")
             if ep_num > 1:
-                production_brief += f" This is episode {ep_num} of {len(episodes)} in the series — assume listeners heard previous episodes."
+                production_brief += f" This is episode {ep_num} of {len(episodes)} in the series - assume listeners heard previous episodes."
 
             script, sources = generate_grounded_script(ep_topic, depth="standard",
                                                         production_brief=production_brief)
@@ -521,7 +503,6 @@ def _run_series(series_id, episodes, voice_alex, voice_morgan):
             update_job(job_id, status="done", progress=f"Episode {ep_num} complete",
                        result={"episode": entry, "sources": sources})
 
-            # Update series progress
             series_list = load_series()
             s = next((x for x in series_list if x["id"] == series_id), None)
             if s:
@@ -580,11 +561,11 @@ def generate_grounded_script(topic, depth="standard", production_brief=""):
 
     prompt = f"""You are writing a premium executive intelligence podcast script. This is NOT generic business content.
 
-HOST PROFILES (stay in character — they are colleagues who push each other):
+HOST PROFILES (stay in character - they are colleagues who push each other):
 - ALEX: Former VP Advanced Analytics at a Fortune 100 CPG. Evidence-first thinker. Speaks in data, patterns, and structural causes. Gets impatient with hand-waving. Comfortable saying "the numbers don't support that." Direct without being abrasive.
 - MORGAN: Former strategy consultant turned operator. Thinks in decisions, consequences, and capital. Asks "who benefits from this belief?" Challenges comfortable consensus. Often the one who names the thing everyone is thinking but not saying.
 
-They have genuine intellectual disagreements. At least once per episode, Morgan should push back on something Alex says (or vice versa) with a real counter — not just "yes, and." Their dynamic makes the listener lean forward.
+They have genuine intellectual disagreements. At least once per episode, Morgan should push back on something Alex says (or vice versa) with a real counter - not just "yes, and." Their dynamic makes the listener lean forward.
 
 LISTENER PROFILE:
 C-suite executive in analytics, AI, or data. Has 20+ years of experience. Reads Stratechery and The Economist, not TechCrunch. Is skeptical of AI hype but knows it's real. Works at the intersection of enterprise technology and business strategy. Specific context: beverage-alcohol industry, enterprise CPG, or analytics-led organizations.
@@ -601,17 +582,17 @@ CONTENT STANDARDS (every episode must hit all of these):
 - Include at least one piece of specific data, a statistic, or a concrete number
 - At least one moment where the hosts genuinely disagree and argue it out before resolving
 - The close must leave the listener with ONE specific question to ask in their next leadership meeting
-- Vary sentence rhythm — mix short punchy statements with longer analytical ones
+- Vary sentence rhythm - mix short punchy statements with longer analytical ones
 - No filler phrases: "at the end of the day", "it's important to note", "in today's landscape", "let's dive in"
-- Spoken-word only — no bullet points, no headers, no lists. Pure dialogue.
+- Spoken-word only - no bullet points, no headers, no lists. Pure dialogue.
 
 STRUCTURE (each section gets {max(2, seg_min//6)}-{max(3, seg_min//4)} segments):
-1. COLD OPEN — Drop into the tension immediately. No throat-clearing. State something that makes the listener stop what they're doing.
-2. GROUND IT — Concrete, named examples of what is actually happening right now. Specific companies, specific decisions, specific outcomes.
-3. THE MECHANISM — Not what is happening, but WHY. The structural force, the incentive misalignment, the thing that makes this pattern repeat.
-4. THE REAL MISTAKE — The specific error that smart, experienced leaders make. The more counterintuitive the better.
-5. THE LEVER — What changes outcomes. One or two specific moves, not a framework. What would you actually do differently Monday morning?
-6. THE REFRAME — Close with one idea that permanently changes how they see this topic. Not a summary. A new lens.
+1. COLD OPEN - Drop into the tension immediately. No throat-clearing. State something that makes the listener stop what they're doing.
+2. GROUND IT - Concrete, named examples of what is actually happening right now. Specific companies, specific decisions, specific outcomes.
+3. THE MECHANISM - Not what is happening, but WHY. The structural force, the incentive misalignment, the thing that makes this pattern repeat.
+4. THE REAL MISTAKE - The specific error that smart, experienced leaders make. The more counterintuitive the better.
+5. THE LEVER - What changes outcomes. One or two specific moves, not a framework. What would you actually do differently Monday morning?
+6. THE REFRAME - Close with one idea that permanently changes how they see this topic. Not a summary. A new lens.
 
 MINIMUM: {seg_min} segments total. Count before returning. Add more if under.
 Each segment: 3-5 substantial spoken sentences. No one-liners.
@@ -657,16 +638,16 @@ SOURCES: source1, source2, source3"""
         matters = topic.get('why_it_matters', 'This has direct implications for how you allocate capital and talent.')
         mistake = topic.get('common_mistake', 'They optimize for visibility over actual impact, which means the real exposure never gets addressed.')
         return [
-            {"host": "Alex", "text": f"Let's start with something most executives in this space already know but haven't fully acted on. {title}. The question isn't whether this is real — it's whether you're positioned correctly when it hits your organization."},
-            {"host": "Morgan", "text": f"And the core tension is this: {tension} That's the uncomfortable part. Because it means the conventional playbook — the one that got most leaders to where they are — may actually be the wrong tool for what's coming."},
+            {"host": "Alex", "text": f"Let's start with something most executives in this space already know but haven't fully acted on. {title}. The question isn't whether this is real - it's whether you're positioned correctly when it hits your organization."},
+            {"host": "Morgan", "text": f"And the core tension is this: {tension} That's the uncomfortable part. Because it means the conventional playbook - the one that got most leaders to where they are - may actually be the wrong tool for what's coming."},
             {"host": "Alex", "text": f"Here's why this matters at the strategic level right now. {matters} And the window to get ahead of this is shorter than most leadership teams have internalized."},
             {"host": "Morgan", "text": "Let's ground this in what's actually happening. The organizations that are navigating this well aren't the ones with the biggest budgets or the most sophisticated tech stacks. They're the ones that identified the structural cause early and built around it rather than against it."},
-            {"host": "Alex", "text": "The structural cause is key. Most conversations about this topic focus on symptoms — the visible friction, the metrics that are off, the talent gaps. But the mechanism underneath is an incentive misalignment that organizations keep papering over with process instead of fixing at the root."},
-            {"host": "Morgan", "text": f"Which brings us to what sophisticated leaders consistently get wrong. {mistake} And the irony is that the leaders who are most experienced — who've solved hard problems before — are often the most prone to this mistake because their pattern recognition is calibrated to a different era."},
+            {"host": "Alex", "text": "The structural cause is key. Most conversations about this topic focus on symptoms - the visible friction, the metrics that are off, the talent gaps. But the mechanism underneath is an incentive misalignment that organizations keep papering over with process instead of fixing at the root."},
+            {"host": "Morgan", "text": f"Which brings us to what sophisticated leaders consistently get wrong. {mistake} And the irony is that the leaders who are most experienced - who've solved hard problems before - are often the most prone to this mistake because their pattern recognition is calibrated to a different era."},
             {"host": "Alex", "text": f"The first question worth sitting with: {sq[0] if sq else 'Where in your current approach are you optimizing for the appearance of progress rather than the underlying condition?'} That's not a rhetorical question. It has a specific answer in your organization right now."},
-            {"host": "Morgan", "text": f"And the second: {sq[1] if len(sq) > 1 else 'What would you do differently if you knew your current approach had a 24-month shelf life?'} Because the executives who are three moves ahead on this aren't smarter — they just asked that question earlier."},
+            {"host": "Morgan", "text": f"And the second: {sq[1] if len(sq) > 1 else 'What would you do differently if you knew your current approach had a 24-month shelf life?'} Because the executives who are three moves ahead on this aren't smarter - they just asked that question earlier."},
             {"host": "Alex", "text": f"If there's a third lever worth examining: {sq[2] if len(sq) > 2 else 'How are you measuring whether your governance and your actual exposure are in sync?'} The answer tells you more about your real risk posture than any framework document."},
-            {"host": "Morgan", "text": "Here's the practical implication. The next time this comes up — whether it's a board review, a budget cycle, or a talent discussion — the question isn't 'are we doing enough.' The question is 'are we working on the right thing.' Those are very different questions with very different answers."},
+            {"host": "Morgan", "text": "Here's the practical implication. The next time this comes up - whether it's a board review, a budget cycle, or a talent discussion - the question isn't 'are we doing enough.' The question is 'are we working on the right thing.' Those are very different questions with very different answers."},
             {"host": "Alex", "text": "The executives who navigate this well aren't the ones with the best data or the biggest teams. They're the ones who identified where their mental model was wrong and updated it before the market forced them to. That's the actual competitive advantage here."},
             {"host": "Morgan", "text": f"Leave you with this reframe: {title} isn't a problem to solve. It's a condition to position around. The organizations that treat it as solvable will spend the next three years in reactive mode. The ones that treat it as structural reality will spend that same time building asymmetric advantage. That's the briefing."}
         ], []
@@ -809,7 +790,7 @@ def _run_generate(job_id, topic_data, depth, voice_alex, voice_morgan, is_traile
             update_job(job_id, progress="Building trailer...")
             script, sources = build_trailer_script(topic_data)
         else:
-            update_job(job_id, progress="Writing script — 1-2 minutes...")
+            update_job(job_id, progress="Writing script - 1-2 minutes...")
             script, sources = generate_grounded_script(topic_data, depth, production_brief)
             log_production()
 
@@ -849,7 +830,7 @@ def _run_chat(job_id, message, existing_topics, voice_alex, voice_morgan):
         topic = chat_to_topic(message, existing_topics)
         production_brief = topic.get("production_brief", "")
 
-        update_job(job_id, progress="Writing script — 1-2 minutes...")
+        update_job(job_id, progress="Writing script - 1-2 minutes...")
         script, sources = generate_grounded_script(topic, depth="standard",
                                                     production_brief=production_brief)
 
@@ -889,18 +870,15 @@ def _run_chat(job_id, message, existing_topics, voice_alex, voice_morgan):
 
 
 def _run_create_series(series_id, topic_or_prompt, num_episodes, voice_alex, voice_morgan):
-    """Generate outline then kick off sequential episode production."""
     try:
         series_list = load_series()
         s = next((x for x in series_list if x["id"] == series_id), None)
         if not s: return
 
-        # Step 1: generate outline
         s["status"] = "outlining"
         save_series(series_list)
         episodes = generate_series_outline(topic_or_prompt, num_episodes)
 
-        # Step 2: create a job_id per episode, store in series
         job_ids = []
         for ep in episodes:
             jid = create_job("series_ep", series_id=series_id, series_ep=ep["episode_number"])
@@ -915,7 +893,6 @@ def _run_create_series(series_id, topic_or_prompt, num_episodes, voice_alex, voi
         s["completed"] = 0
         save_series(series_list)
 
-        # Step 3: produce episodes sequentially in this thread
         _run_series(series_id, episodes, voice_alex, voice_morgan)
 
         series_list = load_series()
@@ -939,15 +916,10 @@ def _run_create_series(series_id, topic_or_prompt, num_episodes, voice_alex, voi
 
 @app.route('/api/engagement')
 def api_engagement_summary():
-    """Return engagement summary for debugging/display."""
     return jsonify(get_engagement_summary())
 
 @app.route('/api/engagement', methods=['POST'])
 def api_engagement_log():
-    """
-    Log a behavioral signal from the frontend.
-    Body: { event_type, topic_title, episode_id?, pct? }
-    """
     data = request.json or {}
     event_type = data.get("event_type", "")
     topic_title = data.get("topic_title", "")
@@ -964,17 +936,14 @@ def api_engagement_log():
 
 @app.route('/api/episodes/<ep_id>', methods=['DELETE'])
 def api_episode_delete(ep_id):
-    """Delete an episode: removes from episodes.json, deletes MP3, rebuilds RSS."""
     eps = load_episodes()
     target = next((e for e in eps if e.get("id") == ep_id), None)
     if not target:
         return jsonify({"success": False, "error": "Episode not found"}), 404
 
-    # Remove from list
     eps = [e for e in eps if e.get("id") != ep_id]
     EPISODES_JSON.write_text(json.dumps(eps, indent=2))
 
-    # Delete MP3 file
     mp3_path = EPISODES_DIR / target.get("file", "")
     if mp3_path.exists():
         try:
@@ -982,7 +951,6 @@ def api_episode_delete(ep_id):
         except Exception as e:
             print(f"[DELETE] Could not remove file {mp3_path}: {e}")
 
-    # Delete segment directory if it exists
     seg_dir = EPISODES_DIR / ep_id
     if seg_dir.is_dir():
         try:
@@ -1001,10 +969,6 @@ def api_episode_delete(ep_id):
 
 @app.route('/api/test/web-search')
 def api_test_web_search():
-    """
-    Test whether web search is working for this Anthropic account.
-    Runs a minimal search call and reports success/failure with diagnostics.
-    """
     test_prompt = "What is today's date? Answer in one sentence."
     try:
         data = call_anthropic(
@@ -1013,7 +977,6 @@ def api_test_web_search():
             use_web_search=True
         )
         text = extract_text(data)
-        # Check if web_search tool was actually invoked
         tool_uses = [b for b in data.get("content", []) if b.get("type") == "tool_use"]
         search_used = any(b.get("name") == "web_search" for b in tool_uses)
         return jsonify({
@@ -1021,7 +984,7 @@ def api_test_web_search():
             "web_search_invoked": search_used,
             "response_preview": text[:200],
             "stop_reason": data.get("stop_reason"),
-            "note": "Web search is working" if search_used else "Call succeeded but web search was not invoked — Claude may not have needed it for this query"
+            "note": "Web search is working" if search_used else "Call succeeded but web search was not invoked"
         })
     except Exception as e:
         error_str = str(e)
@@ -1030,23 +993,17 @@ def api_test_web_search():
             "success": False,
             "web_search_invoked": False,
             "error": error_str,
-            "likely_cause": "Billing/permissions issue — check Anthropic account has web search beta access" if billing else "API error",
+            "likely_cause": "Billing/permissions issue" if billing else "API error",
         }), 500
 
 
 @app.route('/api/health')
 def api_health():
-    """
-    Check API key status and credit levels.
-    ElevenLabs: pulls character quota from subscription API.
-    Anthropic: no balance API — reports key presence and catches billing errors from job history.
-    """
     result = {
         "elevenlabs": {"status": "unknown", "characters_remaining": None, "characters_limit": None, "warning": False},
         "anthropic": {"status": "unknown", "warning": False},
     }
 
-    # ElevenLabs check
     if not ELEVEN_API_KEY:
         result["elevenlabs"] = {"status": "missing_key", "warning": True}
     else:
@@ -1062,7 +1019,7 @@ def api_health():
             limit = sub.get("character_limit", 0)
             remaining = limit - used
             pct_used = (used / limit * 100) if limit else 0
-            warning = pct_used >= 80  # warn at 80% consumed
+            warning = pct_used >= 80
             result["elevenlabs"] = {
                 "status": "ok",
                 "characters_used": used,
@@ -1079,12 +1036,10 @@ def api_health():
             else:
                 result["elevenlabs"] = {"status": "error", "error": str(e), "warning": False}
 
-    # Anthropic check — no balance API, but check key is present and test a minimal call
     if not ANTHROPIC_API_KEY:
         result["anthropic"] = {"status": "missing_key", "warning": True}
     else:
         try:
-            # Check recent job errors for billing/quota signals
             jobs = get_all_jobs()
             recent_errors = [j.get("error", "") for j in jobs.values()
                              if j.get("status") == "error" and j.get("error")][-10:]
@@ -1111,7 +1066,6 @@ def index():
 
 @app.route('/listen')
 def listener():
-    """Public-facing episode player — shareable, no production controls."""
     return render_template('listen.html')
 
 @app.route('/episodes/<path:filename>')
@@ -1132,7 +1086,6 @@ def serve_feed():
 
 @app.route('/api/queue', methods=['GET'])
 def api_queue_status():
-    """Return all active (queued + running) jobs."""
     jobs = get_all_jobs()
     active = [j for j in jobs.values() if j["status"] in ("queued", "running")]
     active.sort(key=lambda j: j["created_at"])
@@ -1140,13 +1093,11 @@ def api_queue_status():
 
 @app.route('/api/queue/clear', methods=['POST'])
 def api_queue_clear():
-    """Clear all queued and errored jobs."""
     cleared = clear_queue()
     return jsonify({"success": True, "cleared": cleared})
 
 @app.route('/api/feed/rebuild', methods=['POST'])
 def api_feed_rebuild():
-    """Force RSS feed rebuild."""
     try:
         build_feed()
         ep_count = len([e for e in load_episodes() if not e.get("is_trailer")])
@@ -1156,7 +1107,6 @@ def api_feed_rebuild():
 
 @app.route('/api/autoqueue', methods=['POST'])
 def api_autoqueue():
-    """Pull latest AR intelligence and queue one episode."""
     data = request.json or {}
     voice_alex = data.get("voice_alex", "Chris - Charming, Down-to-Earth")
     voice_morgan = data.get("voice_morgan", "Matilda - Knowledgable, Professional")
@@ -1165,15 +1115,10 @@ def api_autoqueue():
     job_id = autoqueue_ar_topic(voice_alex, voice_morgan)
     if job_id:
         return jsonify({"success": True, "job_id": job_id})
-    return jsonify({"success": False, "error": "Auto-queue failed — check AR dashboard connectivity"})
+    return jsonify({"success": False, "error": "Auto-queue failed - check AR dashboard connectivity"})
 
 @app.route('/api/discover/suggestions', methods=['GET'])
 def api_discover_suggestions():
-    """
-    Generate 10 'You Might Be Interested' topic ideas.
-    Excludes today's editorial topics AND all previously commissioned episodes.
-    Cached per day; ?refresh=true forces regeneration.
-    """
     SUGGESTIONS_CACHE = DATA_DIR / "suggestions_cache.json"
     today = date.today().isoformat()
     force = request.args.get("refresh", "").lower() == "true"
@@ -1182,18 +1127,15 @@ def api_discover_suggestions():
         try:
             cached = json.loads(SUGGESTIONS_CACHE.read_text())
             if cached.get("date") == today:
-                # Validate: suggestions cache must have been built AFTER today's topics cache
-                # to ensure today's topics were properly excluded
                 topics_mtime = TOPICS_CACHE.stat().st_mtime if TOPICS_CACHE.exists() else 0
                 suggestions_mtime = SUGGESTIONS_CACHE.stat().st_mtime
                 if suggestions_mtime >= topics_mtime:
                     return jsonify({"suggestions": cached["suggestions"], "cached": True})
                 else:
-                    print("[SUGGESTIONS] Cache predates today's topics — regenerating to ensure dedup")
+                    print("[SUGGESTIONS] Cache predates today's topics - regenerating")
         except Exception:
             pass
 
-    # Exclusion list: today's editorial topics + all commissioned episode titles
     today_topics = []
     if TOPICS_CACHE.exists():
         try:
@@ -1212,7 +1154,6 @@ def api_discover_suggestions():
     exclusion_block = "\n".join(f"- {t}" for t in all_exclusions) if all_exclusions else "None yet."
     series_block = "\n".join(f"- {t}" for t in series_titles) if series_titles else "None yet."
 
-    # Engagement signals
     eng = get_engagement_summary()
     strong_block = "\n".join(f"- {t}" for t in eng.get("strong_interest", [])) or "None yet."
     moderate_block = "\n".join(f"- {t}" for t in eng.get("moderate_interest", [])) or "None yet."
@@ -1222,13 +1163,13 @@ def api_discover_suggestions():
 
 Generate 10 high-signal topic ideas that are NEW and DISTINCT from everything already covered.
 
-ALREADY COVERED — DO NOT GENERATE ANYTHING SIMILAR TO THESE:
+ALREADY COVERED - DO NOT GENERATE ANYTHING SIMILAR TO THESE:
 {exclusion_block}
 
 SERIES ARCS IN PROGRESS:
 {series_block}
 
-BEHAVIORAL SIGNALS — USE THESE TO CALIBRATE RECOMMENDATIONS:
+BEHAVIORAL SIGNALS - USE THESE TO CALIBRATE RECOMMENDATIONS:
 Strong interest (listened 75%+ or completed): Generate topics that go DEEPER or adjacent to these.
 {strong_block}
 
@@ -1247,10 +1188,10 @@ EXECUTIVE PROFILE:
 
 RULES:
 - Every topic must be meaningfully distinct from the exclusion list
-- Weight toward strong_interest adjacencies — these are proven signals
+- Weight toward strong_interest adjacencies - these are proven signals
 - Do NOT generate anything in the dismissed territory
 - Include 2-3 trending topics from the last 30 days
-- Contrarian angle required — challenges comfortable consensus
+- Contrarian angle required - challenges comfortable consensus
 - Zero generic AI hype topics
 
 Return ONLY a valid JSON array of exactly 10 objects, no markdown, no preamble:
@@ -1290,13 +1231,6 @@ Return ONLY a valid JSON array of exactly 10 objects, no markdown, no preamble:
 def api_cron_nightly_trailers():
     """
     Nightly job: generate 6 high-confidence trailer topics and queue them for production.
-    Confidence model:
-      - Topics adjacent to commissioned episodes = highest confidence
-      - Topics that overlap with series themes = high confidence
-      - Topics the user previewed but didn't commission = high confidence (not tracked yet, future)
-      - Trending + in user's domain = medium confidence
-    Only runs once per day unless ?force=true.
-
     Cron-job.org URL: /api/cron/nightly-trailers?secret=YOUR_CRON_SECRET
     Recommended: Daily at 22:00 America/Chicago
     """
@@ -1308,7 +1242,6 @@ def api_cron_nightly_trailers():
     TRAILER_QUEUE_LOG = DATA_DIR / "nightly_trailer_log.json"
     today = date.today().isoformat()
 
-    # Idempotency: don't run twice in one day
     if not force and TRAILER_QUEUE_LOG.exists():
         try:
             log = json.loads(TRAILER_QUEUE_LOG.read_text())
@@ -1321,7 +1254,6 @@ def api_cron_nightly_trailers():
     if not ANTHROPIC_API_KEY or not ELEVEN_API_KEY:
         return jsonify({"success": False, "error": "API keys not configured"}), 500
 
-    # Build exclusion list: today's topics + all commissioned episodes
     today_topics_list = []
     if TOPICS_CACHE.exists():
         try:
@@ -1340,7 +1272,6 @@ def api_cron_nightly_trailers():
     exclusion_block = "\n".join(f"- {t}" for t in all_exclusions) if all_exclusions else "None yet."
     series_block = "\n".join(f"- {t}" for t in series_titles) if series_titles else "None yet."
 
-    # Engagement signals for precision targeting
     eng = get_engagement_summary()
     strong_block = "\n".join(f"- {t}" for t in eng.get("strong_interest", [])) or "None yet."
     moderate_block = "\n".join(f"- {t}" for t in eng.get("moderate_interest", [])) or "None yet."
@@ -1348,29 +1279,22 @@ def api_cron_nightly_trailers():
 
     prompt = f"""You are a high-precision editorial recommender for a senior analytics/AI executive (CAO at Overproof, former VP Analytics Diageo North America).
 
-Your task: Generate exactly 6 topic candidates for overnight trailer production. These must be topics you are HIGHLY CONFIDENT this specific executive will want to hear when they wake up.
+Your task: Generate exactly 6 topic candidates for overnight trailer production.
 
-CONFIDENCE CRITERIA:
-1. Proven behavioral adjacency — topics near what they've listened to deeply are highest confidence
-2. Emerging situation in their domain from the last 2-4 weeks
-3. High decision leverage — board/C-suite actionable within 30 days
-4. Contrarian angle — challenges comfortable consensus among their peer set
-5. Genuine relevance to their job search (CAO/CDO/VP Analytics positioning)
-
-ALREADY COVERED — DO NOT GENERATE ANYTHING SIMILAR:
+ALREADY COVERED - DO NOT GENERATE ANYTHING SIMILAR:
 {exclusion_block}
 
 SERIES ARCS IN PROGRESS:
 {series_block}
 
-BEHAVIORAL SIGNALS (actual listen data — weight these heavily):
-Strong interest — listened 75%+ or completed. Generate adjacent/deeper topics here:
+BEHAVIORAL SIGNALS (actual listen data - weight these heavily):
+Strong interest - listened 75%+ or completed:
 {strong_block}
 
-Moderate interest — previewed or partial listen. Good signal:
+Moderate interest - previewed or partial listen:
 {moderate_block}
 
-Dismissed — explicitly rejected. Stay away from this territory:
+Dismissed - explicitly rejected. Stay away:
 {dismissed_block}
 
 EXECUTIVE PROFILE:
@@ -1382,7 +1306,7 @@ EXECUTIVE PROFILE:
 
 CONSTRAINTS:
 - All 6 must clear a HIGH confidence bar
-- Topics near strong_interest adjacencies get priority over generic domain topics
+- Topics near strong_interest adjacencies get priority
 - NEVER generate anything in the dismissed territory
 - Mix: 2-3 enterprise AI/governance, 1-2 beverage alcohol/CPG, 1-2 org/talent/career
 - At least 2 TIME-SENSITIVE topics (next 30 days)
@@ -1397,7 +1321,7 @@ Return ONLY a valid JSON array of exactly 6 objects, no markdown:
   "sub_questions": ["question 1", "question 2", "question 3"],
   "trailer_hook": "3-4 sentence spoken-word hook, direct to a peer executive",
   "confidence_score": 85,
-  "confidence_rationale": "1-2 sentences: specific reason this is high-confidence — cite the behavioral signal if applicable"
+  "confidence_rationale": "1-2 sentences: specific reason this is high-confidence"
 }}]"""
 
     try:
@@ -1411,7 +1335,6 @@ Return ONLY a valid JSON array of exactly 6 objects, no markdown:
         if text.startswith("json"): text = text[4:]
     trailer_topics = json.loads(text)[:6]
 
-    # Queue all 6 as trailers
     job_ids = []
     voice_alex = "Chris - Charming, Down-to-Earth"
     voice_morgan = "Matilda - Knowledgable, Professional"
@@ -1425,7 +1348,6 @@ Return ONLY a valid JSON array of exactly 6 objects, no markdown:
         ).start()
         job_ids.append({"job_id": jid, "title": topic["title"], "confidence": topic.get("confidence_score", 0)})
 
-    # Log run
     TRAILER_QUEUE_LOG.write_text(json.dumps({
         "date": today,
         "run_at": datetime.now(timezone.utc).isoformat(),
@@ -1440,13 +1362,11 @@ Return ONLY a valid JSON array of exactly 6 objects, no markdown:
 
 @app.route('/api/cron/nightly-trailers/status', methods=['GET'])
 def api_nightly_trailer_status():
-    """Return status of last nightly trailer run."""
     TRAILER_QUEUE_LOG = DATA_DIR / "nightly_trailer_log.json"
     if not TRAILER_QUEUE_LOG.exists():
         return jsonify({"run": None})
     try:
         log = json.loads(TRAILER_QUEUE_LOG.read_text())
-        # Enrich with current job statuses
         for item in log.get("job_ids", []):
             j = get_job(item["job_id"])
             item["status"] = j["status"] if j else "unknown"
@@ -1458,13 +1378,10 @@ def api_nightly_trailer_status():
 @app.route('/api/cron/autoqueue', methods=['GET', 'POST'])
 def api_cron_autoqueue():
     """
-    Scheduled autoqueue endpoint — called by external cron (cron-job.org or similar).
-    Requires ?secret=CRON_SECRET or Authorization: Bearer CRON_SECRET header.
-    Set CRON_SECRET in Railway environment variables.
-    Example cron-job.org URL: https://intelligence-briefings-production.up.railway.app/api/cron/autoqueue?secret=YOUR_SECRET
+    Scheduled autoqueue endpoint - called by external cron (cron-job.org or similar).
     Recommended schedule: Daily at 06:00 America/Chicago
+    URL: /api/cron/autoqueue?secret=YOUR_CRON_SECRET
     """
-    # Auth check
     secret = request.args.get("secret") or request.headers.get("Authorization", "").replace("Bearer ", "")
     if CRON_SECRET and secret != CRON_SECRET:
         return jsonify({"success": False, "error": "Unauthorized"}), 401
@@ -1477,9 +1394,160 @@ def api_cron_autoqueue():
         voice_morgan="Matilda - Knowledgable, Professional"
     )
     if job_id:
-        print(f"[CRON] Auto-queued AR briefing → job {job_id}")
+        print(f"[CRON] Auto-queued AR briefing -> job {job_id}")
         return jsonify({"success": True, "job_id": job_id, "triggered_at": datetime.now(timezone.utc).isoformat()})
     return jsonify({"success": False, "error": "Autoqueue failed"}), 500
+
+
+# ---------------------------------------------------------------------------
+# MORNING PREP CRON - Pre-warms topics and suggestions cache before you open the page
+# ---------------------------------------------------------------------------
+
+@app.route('/api/cron/morning-prep', methods=['GET', 'POST'])
+def api_cron_morning_prep():
+    """
+    Morning warm-up job: pre-build topics cache and suggestions cache
+    so the page loads instantly when opened.
+    Recommended: Daily at 05:30 America/Chicago (11:30 UTC)
+    URL: /api/cron/morning-prep?secret=YOUR_CRON_SECRET
+    """
+    secret = request.args.get("secret") or request.headers.get("Authorization", "").replace("Bearer ", "")
+    if CRON_SECRET and secret != CRON_SECRET:
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+
+    force = request.args.get("force", "").lower() == "true"
+    MORNING_PREP_LOG = DATA_DIR / "morning_prep_log.json"
+    today = date.today().isoformat()
+
+    # Idempotency: don't run twice in one day
+    if not force and MORNING_PREP_LOG.exists():
+        try:
+            log = json.loads(MORNING_PREP_LOG.read_text())
+            if log.get("date") == today:
+                return jsonify({"success": True, "skipped": True,
+                                "reason": "Already ran today", "cached_at": log.get("run_at")})
+        except Exception:
+            pass
+
+    results = {"topics": False, "suggestions": False, "errors": []}
+
+    # Step 1: Pre-warm topics cache
+    try:
+        topics = get_topics_for_today()
+        results["topics"] = len(topics)
+        print(f"[MORNING PREP] Topics warmed: {len(topics)} topics")
+    except Exception as e:
+        results["errors"].append(f"Topics failed: {str(e)}")
+        print(f"[MORNING PREP] Topics failed: {e}")
+
+    # Step 2: Pre-warm suggestions cache
+    SUGGESTIONS_CACHE = DATA_DIR / "suggestions_cache.json"
+    try:
+        today_topics = []
+        if TOPICS_CACHE.exists():
+            try:
+                tc = json.loads(TOPICS_CACHE.read_text())
+                if tc.get("date") == today:
+                    today_topics = [t["title"] for t in tc.get("topics", [])]
+            except Exception:
+                pass
+
+        eps = load_episodes()
+        commissioned = [e["title"] for e in eps if not e.get("is_trailer")][-30:]
+        series_list = load_series()
+        series_titles = [s["title"] for s in series_list]
+        all_exclusions = list(set(today_topics + commissioned))
+
+        exclusion_block = "\n".join(f"- {t}" for t in all_exclusions) if all_exclusions else "None yet."
+        series_block = "\n".join(f"- {t}" for t in series_titles) if series_titles else "None yet."
+        eng = get_engagement_summary()
+        strong_block = "\n".join(f"- {t}" for t in eng.get("strong_interest", [])) or "None yet."
+        moderate_block = "\n".join(f"- {t}" for t in eng.get("moderate_interest", [])) or "None yet."
+        dismissed_block = "\n".join(f"- {t}" for t in eng.get("dismissed", [])) or "None yet."
+
+        prompt = f"""You are an editorial intelligence engine for a senior analytics/AI executive (CAO at Overproof, former VP Analytics at Diageo North America).
+
+Generate 10 high-signal topic ideas that are NEW and DISTINCT from everything already covered.
+
+ALREADY COVERED - DO NOT GENERATE ANYTHING SIMILAR TO THESE:
+{exclusion_block}
+
+SERIES ARCS IN PROGRESS:
+{series_block}
+
+BEHAVIORAL SIGNALS - USE THESE TO CALIBRATE RECOMMENDATIONS:
+Strong interest (listened 75%+ or completed): Generate topics that go DEEPER or adjacent to these.
+{strong_block}
+
+Moderate interest (previewed or partially listened): Good signal for adjacent angles.
+{moderate_block}
+
+Dismissed (explicitly not interested): AVOID topics in this territory.
+{dismissed_block}
+
+EXECUTIVE PROFILE:
+- Thinks in systems, incentives, capital allocation, and moats
+- Enterprise AI: governance, multi-agent systems, ROI measurement
+- Beverage alcohol: three-tier dynamics, venue intelligence, distributor data
+- Org design: CAO/CDO role evolution, analytics talent strategy
+- Active C-suite job seeker: CAO, CDO, VP Analytics
+
+RULES:
+- Every topic must be meaningfully distinct from the exclusion list
+- Weight toward strong_interest adjacencies - these are proven signals
+- Do NOT generate anything in the dismissed territory
+- Include 2-3 trending topics from the last 30 days
+- Contrarian angle required - challenges comfortable consensus
+- Zero generic AI hype topics
+
+Return ONLY a valid JSON array of exactly 10 objects, no markdown, no preamble:
+[{{
+  "rank": 1,
+  "title": "provocative but professional title",
+  "tension": "core contrarian thesis in 1-2 sentences",
+  "why_it_matters": "strategic importance for this specific executive in 1 sentence",
+  "freshness": "evergreen | trending | time-sensitive",
+  "confidence_rationale": "1 sentence: why this maps to your demonstrated interests"
+}}]"""
+
+        try:
+            data = call_anthropic([{"role": "user", "content": prompt}], max_tokens=3000, use_web_search=True)
+        except Exception:
+            data = call_anthropic([{"role": "user", "content": prompt}], max_tokens=3000, use_web_search=False)
+
+        text = extract_text(data).strip()
+        if "```" in text:
+            text = text.split("```")[1]
+            if text.startswith("json"): text = text[4:]
+        bracket = text.find("[")
+        if bracket > 0:
+            text = text[bracket:]
+        suggestions = json.loads(text)[:10]
+        SUGGESTIONS_CACHE.write_text(json.dumps({"date": today, "suggestions": suggestions}, indent=2))
+        results["suggestions"] = len(suggestions)
+        print(f"[MORNING PREP] Suggestions warmed: {len(suggestions)} topics")
+    except Exception as e:
+        results["errors"].append(f"Suggestions failed: {str(e)}")
+        print(f"[MORNING PREP] Suggestions failed: {e}")
+
+    # Log run
+    MORNING_PREP_LOG.write_text(json.dumps({
+        "date": today,
+        "run_at": datetime.now(timezone.utc).isoformat(),
+        "results": results,
+    }, indent=2))
+
+    success = results["topics"] is not False
+    print(f"[MORNING PREP] Complete - topics: {results['topics']}, suggestions: {results['suggestions']}")
+    return jsonify({
+        "success": success,
+        "date": today,
+        "topics_cached": results["topics"],
+        "suggestions_cached": results["suggestions"],
+        "errors": results["errors"],
+        "run_at": datetime.now(timezone.utc).isoformat(),
+    })
+
 
 # --- Series ---
 
@@ -1490,11 +1558,6 @@ def api_series_list():
 
 @app.route('/api/series', methods=['POST'])
 def api_series_create():
-    """
-    Create a series. Body:
-    { "topic": "topic string or URL", "topic_data": {...}, "num_episodes": 6,
-      "voice_alex": "...", "voice_morgan": "..." }
-    """
     data = request.json or {}
     topic_data = data.get("topic_data")
     topic_str = data.get("topic", "").strip()
@@ -1541,7 +1604,6 @@ def api_series_status(series_id):
     s = next((x for x in series if x["id"] == series_id), None)
     if not s:
         return jsonify({"error": "Series not found"}), 404
-    # Enrich with per-job status
     if s.get("job_ids"):
         job_statuses = []
         for i, jid in enumerate(s["job_ids"]):
