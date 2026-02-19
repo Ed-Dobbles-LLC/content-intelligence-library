@@ -321,6 +321,23 @@ function renderBriefings() {
     </div>`).join('');
 }
 
+// ---- ASYNC JOB POLLER ----
+// Polls /api/job/<job_id> every 3s until done or error.
+// onProgress(msg): called with each progress update
+// onDone(result): called with job.result when done
+// onError(msg): called on error
+function pollJob(jobId, onProgress, onDone, onError) {
+  const interval = setInterval(async () => {
+    try {
+      const job = await fetch('/api/job/' + jobId).then(r => r.json());
+      if (job.error && !job.status) { clearInterval(interval); onError('Job not found'); return; }
+      if (job.progress) onProgress(job.progress);
+      if (job.status === 'done') { clearInterval(interval); onDone(job.result); }
+      else if (job.status === 'error') { clearInterval(interval); onError(job.error || 'Unknown error'); }
+    } catch(e) { clearInterval(interval); onError('Connection error'); }
+  }, 3000);
+}
+
 async function generateBriefing(idx) {
   const topic = allTopics[idx];
   const btn = document.getElementById('bp-' + idx);
@@ -331,11 +348,7 @@ async function generateBriefing(idx) {
   btn.disabled = true;
   btn.textContent = 'Generating...';
   card.classList.add('playing');
-  let dots = 0;
-  const tick = setInterval(() => {
-    dots = (dots + 1) % 4;
-    status.textContent = 'Researching and producing' + '.'.repeat(dots) + ' (60–90 sec)';
-  }, 1500);
+  status.textContent = 'Queuing...';
 
   try {
     const res = await fetch('/api/generate', {
@@ -346,31 +359,26 @@ async function generateBriefing(idx) {
         voice_morgan: document.getElementById('voice_morgan').value
       })
     });
-    clearInterval(tick);
     const data = await res.json();
-    if (data.success) {
-      status.textContent = '✓ Episode ready';
-      audioDiv.innerHTML = `<audio controls src="/episodes/${data.episode.file}"></audio>`;
-      btn.textContent = '↺ Regenerate';
-      btn.disabled = false;
-      btn.className = 'btn-play ready';
-      if (data.sources && data.sources.length) {
-        document.getElementById('bsrc-' + idx).textContent = 'Sources: ' + data.sources.join(', ');
-      }
-      weeklyCount++;
-      updateCapDisplay();
-      loadEpisodes();
-    } else {
-      clearInterval(tick);
-      status.textContent = '⚠ ' + (data.error || 'Error — try again');
-      btn.disabled = false; btn.textContent = '⚡ Retry';
-      card.classList.remove('playing');
+    if (!data.success) {
+      status.textContent = '⚠ ' + (data.error || 'Error'); btn.disabled = false; btn.textContent = '⚡ Retry'; card.classList.remove('playing'); return;
     }
+    pollJob(data.job_id,
+      (msg) => { status.textContent = msg; },
+      (result) => {
+        status.textContent = '✓ Episode ready';
+        audioDiv.innerHTML = `<audio controls src="/episodes/${result.episode.file}"></audio>`;
+        btn.textContent = '↺ Regenerate'; btn.disabled = false; btn.className = 'btn-play ready';
+        if (result.sources && result.sources.length)
+          document.getElementById('bsrc-' + idx).textContent = 'Sources: ' + result.sources.join(', ');
+        weeklyCount++; updateCapDisplay(); loadEpisodes();
+      },
+      (err) => {
+        status.textContent = '⚠ ' + err; btn.disabled = false; btn.textContent = '⚡ Retry'; card.classList.remove('playing');
+      }
+    );
   } catch(e) {
-    clearInterval(tick);
-    status.textContent = '⚠ Connection error';
-    btn.disabled = false; btn.textContent = '⚡ Retry';
-    card.classList.remove('playing');
+    status.textContent = '⚠ Connection error'; btn.disabled = false; btn.textContent = '⚡ Retry'; card.classList.remove('playing');
   }
 }
 
@@ -441,7 +449,7 @@ async function previewTopic(idx) {
   const btn = document.getElementById('tb-' + idx);
   const status = document.getElementById('ts-' + idx);
   btn.disabled = true; btn.textContent = 'Generating...';
-  status.textContent = 'Generating 90-second preview...';
+  status.textContent = 'Queuing preview...';
   try {
     const res = await fetch('/api/generate', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -450,14 +458,22 @@ async function previewTopic(idx) {
         voice_morgan: document.getElementById('voice_morgan').value })
     });
     const data = await res.json();
-    if (data.success) {
-      btn.textContent = '▶ Replay'; btn.disabled = false; status.textContent = '';
-      document.getElementById('ta-' + idx).innerHTML =
-        `<audio controls src="/episodes/${data.episode.file}" style="width:100%;height:32px;margin-top:0.3rem"></audio>`;
-    } else {
+    if (!data.success) {
       btn.textContent = '▶ 90s Preview'; btn.disabled = false;
-      status.textContent = '⚠ ' + (data.error || 'Error'); status.className = 'tc-status err';
+      status.textContent = '⚠ ' + (data.error || 'Error'); status.className = 'tc-status err'; return;
     }
+    pollJob(data.job_id,
+      (msg) => { status.textContent = msg; },
+      (result) => {
+        btn.textContent = '▶ Replay'; btn.disabled = false; status.textContent = '';
+        document.getElementById('ta-' + idx).innerHTML =
+          `<audio controls src="/episodes/${result.episode.file}" style="width:100%;height:32px;margin-top:0.3rem"></audio>`;
+      },
+      (err) => {
+        btn.textContent = '▶ 90s Preview'; btn.disabled = false;
+        status.textContent = '⚠ ' + err; status.className = 'tc-status err';
+      }
+    );
   } catch(e) { btn.textContent = '▶ 90s Preview'; btn.disabled = false; status.textContent = '⚠ Connection error'; status.className = 'tc-status err'; }
 }
 
@@ -468,13 +484,8 @@ async function commissionTopic(idx) {
   const prevBtn = document.getElementById('tb-' + idx);
   const status = document.getElementById('ts-' + idx);
   btn.disabled = true; prevBtn.disabled = true;
-  btn.textContent = 'Producing...';
-  let dots = 0;
-  const tick = setInterval(() => {
-    dots = (dots + 1) % 4;
-    status.textContent = 'Researching and producing' + '.'.repeat(dots) + ' (60–90 sec)';
-    status.className = 'tc-status';
-  }, 1500);
+  btn.textContent = 'Queuing...';
+  status.textContent = 'Queued...';
   try {
     const res = await fetch('/api/generate', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -482,24 +493,30 @@ async function commissionTopic(idx) {
         voice_alex: document.getElementById('voice_alex').value,
         voice_morgan: document.getElementById('voice_morgan').value })
     });
-    clearInterval(tick);
     const data = await res.json();
-    if (data.success) {
-      status.textContent = '✓ Episode ready — see Episodes tab'; status.className = 'tc-status ok';
-      btn.textContent = '✓ Commissioned'; btn.disabled = true;
-      weeklyCount++; updateCapDisplay(); loadEpisodes();
-    } else {
+    if (!data.success) {
       btn.disabled = false; prevBtn.disabled = false; btn.textContent = 'Commission Episode';
-      status.textContent = '⚠ ' + (data.error || 'Error'); status.className = 'tc-status err';
+      status.textContent = '⚠ ' + (data.error || 'Error'); status.className = 'tc-status err'; return;
     }
+    btn.textContent = 'Producing...';
+    pollJob(data.job_id,
+      (msg) => { status.textContent = msg; status.className = 'tc-status'; },
+      (result) => {
+        status.textContent = '✓ Episode ready — see Episodes tab'; status.className = 'tc-status ok';
+        btn.textContent = '✓ Commissioned'; btn.disabled = true;
+        weeklyCount++; updateCapDisplay(); loadEpisodes();
+      },
+      (err) => {
+        btn.disabled = false; prevBtn.disabled = false; btn.textContent = 'Commission Episode';
+        status.textContent = '⚠ ' + err; status.className = 'tc-status err';
+      }
+    );
   } catch(e) {
-    clearInterval(tick);
     btn.disabled = false; prevBtn.disabled = false; btn.textContent = 'Commission Episode';
     status.textContent = '⚠ Connection error'; status.className = 'tc-status err';
   }
 }
 
-// ---- CHAT ----
 async function sendChat() {
   const input = document.getElementById('chatInput');
   const btn = document.getElementById('chatSendBtn');
@@ -508,12 +525,8 @@ async function sendChat() {
   const message = input.value.trim();
   if (!message) return;
 
-  btn.disabled = true; btn.textContent = 'Producing...';
-  let dots = 0;
-  const tick = setInterval(() => {
-    dots = (dots + 1) % 4;
-    statusEl.textContent = 'Researching topic, writing script, generating audio' + '.'.repeat(dots) + ' (~90 sec)';
-  }, 1500);
+  btn.disabled = true; btn.textContent = 'Queuing...';
+  statusEl.textContent = 'Queued...';
   resultEl.style.display = 'none';
 
   try {
@@ -525,28 +538,36 @@ async function sendChat() {
         voice_morgan: document.getElementById('voice_morgan').value
       })
     });
-    clearInterval(tick);
     const data = await res.json();
-    if (data.success) {
-      statusEl.textContent = '';
-      resultEl.style.display = 'block';
-      document.getElementById('chatResultTitle').textContent = data.topic.title;
-      document.getElementById('chatResultMeta').textContent = data.topic.tension;
-      document.getElementById('chatResultAudio').innerHTML =
-        `<audio controls src="/episodes/${data.episode.file}" style="width:100%;height:32px"></audio>`;
-      if (data.sources && data.sources.length) {
-        document.getElementById('chatResultSources').textContent = 'Sources: ' + data.sources.join(', ');
-      }
-      input.value = '';
-      weeklyCount++; updateCapDisplay(); loadEpisodes();
-    } else {
+    if (!data.success) {
       statusEl.textContent = '⚠ ' + (data.error || 'Production failed — try again');
+      btn.disabled = false; btn.textContent = 'Produce →'; return;
     }
+    btn.textContent = 'Producing...';
+    pollJob(data.job_id,
+      (msg) => { statusEl.textContent = msg; },
+      (result) => {
+        statusEl.textContent = '';
+        resultEl.style.display = 'block';
+        document.getElementById('chatResultTitle').textContent = result.topic.title;
+        document.getElementById('chatResultMeta').textContent = result.topic.tension;
+        document.getElementById('chatResultAudio').innerHTML =
+          `<audio controls src="/episodes/${result.episode.file}" style="width:100%;height:32px"></audio>`;
+        if (result.sources && result.sources.length)
+          document.getElementById('chatResultSources').textContent = 'Sources: ' + result.sources.join(', ');
+        input.value = '';
+        weeklyCount++; updateCapDisplay(); loadEpisodes();
+        btn.disabled = false; btn.textContent = 'Produce →';
+      },
+      (err) => {
+        statusEl.textContent = '⚠ ' + err;
+        btn.disabled = false; btn.textContent = 'Produce →';
+      }
+    );
   } catch(e) {
-    clearInterval(tick);
     statusEl.textContent = '⚠ Connection error';
+    btn.disabled = false; btn.textContent = 'Produce →';
   }
-  btn.disabled = false; btn.textContent = 'Produce →';
 }
 
 // ---- EPISODES ----

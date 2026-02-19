@@ -1,6 +1,8 @@
 import os
 import json
 import shutil
+import threading
+import uuid
 from pathlib import Path
 from datetime import datetime, timezone, date, timedelta
 from flask import Flask, jsonify, request, send_from_directory, render_template
@@ -13,16 +15,67 @@ TOPICS_CACHE = DATA_DIR / "topics_cache.json"
 FEED_FILE = DATA_DIR / "feed.xml"
 EPISODES_JSON = DATA_DIR / "episodes.json"
 PRODUCTION_LOG = DATA_DIR / "production_log.json"
+JOBS_FILE = DATA_DIR / "jobs.json"
 
 ELEVEN_API_KEY = os.environ.get("ELEVEN_LABS_API_KEY") or os.environ.get("ELEVENLABS_API_KEY", "")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-WEEKLY_CAP = 5  # max productions per week
+WEEKLY_CAP = 5
 
-# Base URL for the feed — used to build audio URLs
 BASE_URL = os.environ.get("BASE_URL", "https://intelligence-briefings-production.up.railway.app")
 
 for d in [DATA_DIR, EPISODES_DIR]:
     d.mkdir(parents=True, exist_ok=True)
+
+# ---------------------------------------------------------------------------
+# JOB QUEUE — thread-safe, persisted to Railway volume
+# ---------------------------------------------------------------------------
+
+_jobs_lock = threading.Lock()
+
+def _load_jobs():
+    if not JOBS_FILE.exists():
+        return {}
+    try:
+        return json.loads(JOBS_FILE.read_text())
+    except Exception:
+        return {}
+
+def _save_jobs(jobs):
+    if len(jobs) > 100:
+        sorted_keys = sorted(jobs, key=lambda k: jobs[k].get("created_at", ""))
+        for k in sorted_keys[:-100]:
+            del jobs[k]
+    JOBS_FILE.write_text(json.dumps(jobs, indent=2))
+
+def create_job(job_type="generate"):
+    job_id = str(uuid.uuid4())[:8]
+    job = {
+        "id": job_id,
+        "type": job_type,
+        "status": "queued",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "progress": "Queued...",
+        "result": None,
+        "error": None,
+    }
+    with _jobs_lock:
+        jobs = _load_jobs()
+        jobs[job_id] = job
+        _save_jobs(jobs)
+    return job_id
+
+def update_job(job_id, **kwargs):
+    kwargs["updated_at"] = datetime.now(timezone.utc).isoformat()
+    with _jobs_lock:
+        jobs = _load_jobs()
+        if job_id in jobs:
+            jobs[job_id].update(kwargs)
+            _save_jobs(jobs)
+
+def get_job(job_id):
+    with _jobs_lock:
+        return _load_jobs().get(job_id)
 
 # ---------------------------------------------------------------------------
 # PRODUCTION CAP
@@ -157,9 +210,7 @@ def call_anthropic(messages, max_tokens=2500, use_web_search=False):
         data=payload,
         headers=headers
     )
-    # FIX: Increased timeout from 60s to 180s — web search + script gen was timing out,
-    # causing silent fallback to the 5-segment hardcoded script (hence ~50 sec episodes)
-    timeout = 180 if use_web_search else 60
+    timeout = 300 if use_web_search else 90
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return json.loads(resp.read())
 
@@ -205,31 +256,8 @@ def generate_topics_via_claude():
         return FALLBACK_TOPICS
 
 # ---------------------------------------------------------------------------
-# CHAT — DISCOVER REFINEMENT
+# CHAT
 # ---------------------------------------------------------------------------
-
-CHAT_SYSTEM = """You are an editorial producer for an executive intelligence podcast.
-The listener is a senior analytics and AI executive (former VP at Diageo, CAO at Overproof,
-building agentic AI systems, C-suite job seeker).
-
-You receive one of two types of input:
-1. "I want to learn about X" — generate a new topic card
-2. A reference to an existing topic + refinement instructions — adjust that topic
-
-In both cases, return a SINGLE topic object as valid JSON (no markdown):
-{
-  "rank": 1,
-  "title": "provocative but professional title",
-  "tension": "core contrarian thesis in 1-2 sentences",
-  "why_it_matters": "strategic importance in 1 sentence",
-  "common_mistake": "what sophisticated leaders get wrong",
-  "sub_questions": ["question 1", "question 2", "question 3"],
-  "trailer_hook": "3-4 sentence spoken-word hook",
-  "production_brief": "2-3 sentences of specific guidance for the script writer on what to emphasize, cover, or avoid"
-}
-
-The production_brief field captures the user's specific refinement intent for use in script generation.
-Tone: sharp, executive, zero fluff. Topics should feel slightly uncomfortable or contrarian."""
 
 def chat_to_topic(user_message, existing_topics=None):
     context = ""
@@ -239,9 +267,23 @@ def chat_to_topic(user_message, existing_topics=None):
             context += f"#{t['rank']}: {t['title']}\n"
         context += "\n"
 
+    system = """You are an editorial producer for an executive intelligence podcast.
+Return a SINGLE topic object as valid JSON (no markdown):
+{
+  "rank": 1,
+  "title": "provocative but professional title",
+  "tension": "core contrarian thesis in 1-2 sentences",
+  "why_it_matters": "strategic importance in 1 sentence",
+  "common_mistake": "what sophisticated leaders get wrong",
+  "sub_questions": ["question 1", "question 2", "question 3"],
+  "trailer_hook": "3-4 sentence spoken-word hook",
+  "production_brief": "2-3 sentences of specific guidance for the script writer"
+}
+Tone: sharp, executive, zero fluff."""
+
     data = call_anthropic([{
         "role": "user",
-        "content": context + user_message
+        "content": system + "\n\n" + context + user_message
     }], max_tokens=1000)
 
     text = extract_text(data).strip()
@@ -251,58 +293,39 @@ def chat_to_topic(user_message, existing_topics=None):
     return json.loads(text)
 
 # ---------------------------------------------------------------------------
-# SCRIPT GENERATION (GROUNDED)
+# SCRIPT GENERATION
 # ---------------------------------------------------------------------------
 
-SCRIPT_SYSTEM = """You are a script writer for an executive intelligence podcast.
-Write a two-host dialogue between Alex (analytical, direct) and Morgan (strategic, challenges assumptions).
-
-GROUNDING RULES — CRITICAL:
-- You have web search available. USE IT before writing any script.
-- Search for current data, recent examples, real company names, actual statistics.
-- Only include claims you found in search results or that are well-established facts.
-- Do NOT invent statistics, company names, or specific data points.
-- If you can't verify something, don't say it.
-
-SCRIPT FORMAT:
-Return a JSON array of dialogue segments:
-[{"host": "Alex", "text": "..."}, {"host": "Morgan", "text": "..."}, ...]
-
-TARGET LENGTH based on depth:
-- executive: 6-8 segments (~3 min)
-- standard: 12-16 segments (~8 min)
-- deep: 20-28 segments (~15 min)
-
-STRUCTURE:
-1. Cold open — state the uncomfortable truth immediately
-2. Ground it — real examples, current data from your search
-3. The tension — what sophisticated leaders get wrong
-4. The so-what — specific decision leverage for the listener
-5. Close — one sentence that reframes how they'll think about this
-
-After the script JSON, on a new line add:
-SOURCES: [comma-separated list of sources/publications you referenced]"""
-
 def generate_grounded_script(topic, depth="standard", production_brief=""):
-    brief_section = f"\nPRODUCTION BRIEF (user's specific focus):\n{production_brief}\n" if production_brief else ""
+    brief_section = f"\nPRODUCTION BRIEF:\n{production_brief}\n" if production_brief else ""
 
-    prompt = f"""Write an executive podcast script on this topic:
+    prompt = f"""Write an executive podcast script on this topic.
 
 TITLE: {topic['title']}
 CORE TENSION: {topic['tension']}
 WHAT LEADERS GET WRONG: {topic.get('common_mistake', '')}
-DISCUSSION QUESTIONS TO COVER: {'; '.join(topic.get('sub_questions', []))}
+QUESTIONS TO COVER: {'; '.join(topic.get('sub_questions', []))}
 {brief_section}
 DEPTH: {depth}
 
-Search for current, relevant information before writing. Ground every claim."""
+You are writing a two-host dialogue: Alex (analytical, direct) vs Morgan (strategic, challenges assumptions).
+Search for current data and real examples before writing. Only use claims you can verify.
+
+Return ONLY a JSON array:
+[{{"host": "Alex", "text": "..."}}, ...]
+
+Segment targets: executive=6-8, standard=12-16, deep=20-28
+
+Structure: cold open → grounded evidence → the tension → decision leverage → reframe close
+
+After the JSON array, add on a new line:
+SOURCES: source1, source2, source3"""
 
     try:
         data = call_anthropic([{"role": "user", "content": prompt}],
                               max_tokens=4000, use_web_search=True)
         full_text = extract_text(data)
 
-        # Split script from sources
         sources = []
         script_text = full_text
         if "SOURCES:" in full_text:
@@ -310,45 +333,39 @@ Search for current, relevant information before writing. Ground every claim."""
             script_text = parts[0].strip()
             sources = [s.strip() for s in parts[1].strip().split(",") if s.strip()]
 
-        # Parse JSON
         if "```" in script_text:
             script_text = script_text.split("```")[1]
             if script_text.startswith("json"): script_text = script_text[4:]
 
         script = json.loads(script_text.strip())
-        print(f"Script generated successfully: {len(script)} segments")
+        print(f"Script generated: {len(script)} segments")
         return script, sources
     except Exception as e:
         print(f"Script generation failed: {e}")
-        # Fallback — 8 segments so even fallback is longer than 50 sec
+        sq = topic.get('sub_questions', [])
         return [
-            {"host": "Alex", "text": f"Today we're examining a tension that most executives in this space are actively avoiding. {topic['title']}."},
-            {"host": "Morgan", "text": f"And the core of it is this: {topic['tension']}"},
+            {"host": "Alex", "text": f"Today we're examining a tension most executives are actively avoiding. {topic['title']}."},
+            {"host": "Morgan", "text": f"The core of it: {topic['tension']}"},
             {"host": "Alex", "text": f"Here's why this matters right now. {topic['why_it_matters']}"},
-            {"host": "Morgan", "text": f"What we consistently see sophisticated leaders get wrong: {topic.get('common_mistake', 'They optimize for visibility over actual impact.')}"},
-            {"host": "Alex", "text": f"The first question every executive should be sitting with: {topic.get('sub_questions', ['Where is the real exposure in your current approach?'])[0]}"},
-            {"host": "Morgan", "text": f"And the second: {topic.get('sub_questions', ['', 'What would you do differently if you knew this was the trajectory?'])[1] if len(topic.get('sub_questions', [])) > 1 else 'What decision does this change for you in the next 90 days?'}"},
-            {"host": "Alex", "text": "The executives who navigate this well aren't the ones who have the best data. They're the ones who ask the better question earlier."},
+            {"host": "Morgan", "text": f"What sophisticated leaders consistently get wrong: {topic.get('common_mistake', 'They optimize for visibility over actual impact.')}"},
+            {"host": "Alex", "text": f"{sq[0] if sq else 'Where is the real exposure in your current approach?'}"},
+            {"host": "Morgan", "text": f"{sq[1] if len(sq) > 1 else 'What decision does this change for you in the next 90 days?'}"},
+            {"host": "Alex", "text": "The executives who navigate this well aren't the ones with the best data. They're the ones asking the better question earlier."},
             {"host": "Morgan", "text": "That's the briefing. Sit with the tension."}
         ], []
 
 def build_trailer_script(topic):
     return [
         {"host": "Alex", "text": topic.get("trailer_hook", topic["tension"])},
-        {"host": "Alex", "text": f"If you want the full deep dive on {topic['title']}, hit Generate Briefing. I'm Alex."}
+        {"host": "Alex", "text": f"For the full briefing on {topic['title']}, hit Generate Briefing. I'm Alex."}
     ], []
 
 # ---------------------------------------------------------------------------
-# RSS FEED GENERATION
+# RSS FEED
 # ---------------------------------------------------------------------------
 
 def build_feed():
-    """
-    Build a valid Apple Podcasts-compatible RSS 2.0 feed from episodes.json
-    and write it to FEED_FILE. Called every time an episode is saved.
-    """
     eps = load_episodes()
-    # Only include full episodes (not trailers) in the main feed, sorted newest first
     feed_eps = sorted(
         [e for e in eps if not e.get("is_trailer")],
         key=lambda e: e.get("published", ""),
@@ -356,20 +373,15 @@ def build_feed():
     )
 
     def esc(s):
-        return (str(s)
-                .replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace('"', "&quot;"))
+        return (str(s).replace("&", "&amp;").replace("<", "&lt;")
+                .replace(">", "&gt;").replace('"', "&quot;"))
 
     items = []
     for ep in feed_eps:
         audio_url = f"{BASE_URL}/episodes/{esc(ep['file'])}"
         file_size = ep.get("file_size", 0)
-        pub_date = ep.get("published", datetime.now(timezone.utc).isoformat())
-        # Convert ISO to RFC 2822 for RSS
         try:
-            dt = datetime.fromisoformat(pub_date)
+            dt = datetime.fromisoformat(ep.get("published", ""))
             pub_rfc = dt.strftime("%a, %d %b %Y %H:%M:%S +0000")
         except Exception:
             pub_rfc = datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S +0000")
@@ -382,7 +394,6 @@ def build_feed():
       <pubDate>{pub_rfc}</pubDate>
       <itunes:title>{esc(ep.get('title', 'Intelligence Briefing'))}</itunes:title>
       <itunes:summary>{esc(ep.get('description', ''))}</itunes:summary>
-      <itunes:duration>{ep.get('duration', '')}</itunes:duration>
       <itunes:explicit>no</itunes:explicit>
     </item>""")
 
@@ -393,12 +404,10 @@ def build_feed():
   <channel>
     <title>Intelligence Briefings</title>
     <link>{BASE_URL}</link>
-    <description>Executive intelligence briefings on AI, analytics, and enterprise strategy. Powered by Ed Borasky's editorial engine.</description>
+    <description>Executive intelligence briefings on AI, analytics, and enterprise strategy.</description>
     <language>en-us</language>
     <itunes:author>Ed Borasky</itunes:author>
-    <itunes:owner>
-      <itunes:name>Ed Borasky</itunes:name>
-    </itunes:owner>
+    <itunes:owner><itunes:name>Ed Borasky</itunes:name></itunes:owner>
     <itunes:category text="Business"/>
     <itunes:explicit>no</itunes:explicit>
     <itunes:type>episodic</itunes:type>
@@ -408,7 +417,7 @@ def build_feed():
 </rss>"""
 
     FEED_FILE.write_text(feed_xml, encoding="utf-8")
-    print(f"Feed rebuilt: {len(feed_eps)} episodes -> {FEED_FILE}")
+    print(f"Feed rebuilt: {len(feed_eps)} episodes")
 
 # ---------------------------------------------------------------------------
 # AUDIO
@@ -464,11 +473,107 @@ def save_episode(entry):
     eps = load_episodes()
     eps.append(entry)
     EPISODES_JSON.write_text(json.dumps(eps, indent=2))
-    # FIX: Rebuild feed every time an episode is saved
     try:
         build_feed()
     except Exception as e:
         print(f"Feed build failed (non-fatal): {e}")
+
+# ---------------------------------------------------------------------------
+# BACKGROUND WORKERS
+# ---------------------------------------------------------------------------
+
+def _run_generate(job_id, topic_data, depth, voice_alex, voice_morgan, is_trailer, production_brief):
+    try:
+        update_job(job_id, status="running", progress="Connecting to voice service...")
+        client = get_elevenlabs_client()
+        voice_a_id = resolve_voice(client, voice_alex)
+        voice_b_id = resolve_voice(client, voice_morgan)
+        if not voice_a_id or not voice_b_id:
+            update_job(job_id, status="error", error="Voice not found"); return
+
+        if is_trailer:
+            update_job(job_id, progress="Building trailer...")
+            script, sources = build_trailer_script(topic_data)
+        else:
+            update_job(job_id, progress="Researching and writing script — takes 2-3 minutes...")
+            script, sources = generate_grounded_script(topic_data, depth, production_brief)
+            log_production()
+
+        update_job(job_id, progress=f"Generating audio ({len(script)} segments)...")
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        ep_type = "trailer" if is_trailer else "episode"
+        ep_id = f"briefing-{ep_type}-{timestamp}"
+        ep_dir = EPISODES_DIR / ep_id
+        final_path = generate_episode_audio(client, script, ep_dir, voice_a_id, voice_b_id)
+
+        dest = EPISODES_DIR / f"{ep_id}.mp3"
+        shutil.copy2(final_path, dest)
+
+        label = "Trailer" if is_trailer else depth.title()
+        entry = {
+            "id": ep_id,
+            "title": f"{'[Trailer] ' if is_trailer else ''}Briefing: {topic_data['title']}",
+            "description": topic_data.get("tension", ""),
+            "file": f"{ep_id}.mp3",
+            "file_size": dest.stat().st_size,
+            "depth": label,
+            "is_trailer": is_trailer,
+            "sources": sources,
+            "published": datetime.now(timezone.utc).isoformat(),
+        }
+        save_episode(entry)
+        update_job(job_id, status="done", progress="Complete",
+                   result={"episode": entry, "sources": sources})
+
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        update_job(job_id, status="error", error=str(e))
+
+
+def _run_chat(job_id, message, existing_topics, voice_alex, voice_morgan):
+    try:
+        update_job(job_id, status="running", progress="Generating topic from your message...")
+        topic = chat_to_topic(message, existing_topics)
+        production_brief = topic.get("production_brief", "")
+
+        update_job(job_id, progress="Researching and writing script — takes 2-3 minutes...")
+        script, sources = generate_grounded_script(topic, depth="standard",
+                                                    production_brief=production_brief)
+
+        update_job(job_id, progress=f"Generating audio ({len(script)} segments)...")
+        client = get_elevenlabs_client()
+        voice_a_id = resolve_voice(client, voice_alex)
+        voice_b_id = resolve_voice(client, voice_morgan)
+        if not voice_a_id or not voice_b_id:
+            update_job(job_id, status="error", error="Voice not found"); return
+
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        ep_id = f"briefing-chat-{timestamp}"
+        ep_dir = EPISODES_DIR / ep_id
+        final_path = generate_episode_audio(client, script, ep_dir, voice_a_id, voice_b_id)
+
+        dest = EPISODES_DIR / f"{ep_id}.mp3"
+        shutil.copy2(final_path, dest)
+        log_production()
+
+        entry = {
+            "id": ep_id,
+            "title": f"[Chat] {topic['title']}",
+            "description": topic["tension"],
+            "file": f"{ep_id}.mp3",
+            "file_size": dest.stat().st_size,
+            "depth": "Standard",
+            "is_trailer": False,
+            "sources": sources,
+            "published": datetime.now(timezone.utc).isoformat(),
+        }
+        save_episode(entry)
+        update_job(job_id, status="done", progress="Complete",
+                   result={"topic": topic, "episode": entry, "sources": sources})
+
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        update_job(job_id, status="error", error=str(e))
 
 # ---------------------------------------------------------------------------
 # ROUTES
@@ -484,14 +589,21 @@ def serve_episode(filename):
 
 @app.route('/feed.xml')
 def serve_feed():
-    # Rebuild on every request so feed is always current
     try:
         build_feed()
     except Exception as e:
-        print(f"Feed rebuild on request failed: {e}")
+        print(f"Feed rebuild failed: {e}")
     if FEED_FILE.exists():
         return send_from_directory(DATA_DIR, 'feed.xml', mimetype='application/rss+xml')
-    return "No episodes yet — generate your first briefing to create the feed.", 404
+    return "No episodes yet — generate your first briefing.", 404
+
+@app.route('/api/job/<job_id>')
+def api_job_status(job_id):
+    """Poll this to check generation progress. status: queued|running|done|error"""
+    job = get_job(job_id)
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
+    return jsonify(job)
 
 @app.route('/api/voices')
 def api_voices():
@@ -520,11 +632,12 @@ def api_topics():
         week_count = productions_this_week()
         return jsonify({"topics": topics, "productions_this_week": week_count, "weekly_cap": WEEKLY_CAP})
     except Exception as e:
-        return jsonify({"error": str(e), "topics": FALLBACK_TOPICS, "productions_this_week": 0, "weekly_cap": WEEKLY_CAP})
+        return jsonify({"error": str(e), "topics": FALLBACK_TOPICS,
+                        "productions_this_week": 0, "weekly_cap": WEEKLY_CAP})
 
 @app.route('/api/chat', methods=['POST'])
 def api_chat():
-    """Chat interface: generate or refine topic card, then immediately produce audio."""
+    """Returns job_id immediately. Poll /api/job/<job_id> for status."""
     data = request.json
     message = data.get("message", "").strip()
     existing_topics = data.get("existing_topics", [])
@@ -535,59 +648,22 @@ def api_chat():
         return jsonify({"success": False, "error": "Message required"})
     if not ANTHROPIC_API_KEY:
         return jsonify({"success": False, "error": "Anthropic API key not configured"})
+    if not ELEVEN_API_KEY:
+        return jsonify({"success": False, "error": "ElevenLabs API key not configured"})
 
-    try:
-        # Step 1: Generate topic from chat
-        topic = chat_to_topic(message, existing_topics)
-        production_brief = topic.get("production_brief", "")
-
-        # Step 2: Generate grounded script
-        script, sources = generate_grounded_script(topic, depth="standard",
-                                                    production_brief=production_brief)
-
-        # Step 3: Produce audio
-        if not ELEVEN_API_KEY:
-            return jsonify({"success": False, "error": "ElevenLabs API key not configured",
-                           "topic": topic})
-
-        client = get_elevenlabs_client()
-        voice_a_id = resolve_voice(client, voice_alex)
-        voice_b_id = resolve_voice(client, voice_morgan)
-        if not voice_a_id or not voice_b_id:
-            return jsonify({"success": False, "error": "Voice not found"})
-
-        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        ep_id = f"briefing-chat-{timestamp}"
-        ep_dir = EPISODES_DIR / ep_id
-        final_path = generate_episode_audio(client, script, ep_dir, voice_a_id, voice_b_id)
-
-        dest = EPISODES_DIR / f"{ep_id}.mp3"
-        shutil.copy2(final_path, dest)
-        log_production()
-
-        entry = {
-            "id": ep_id,
-            "title": f"[Chat] {topic['title']}",
-            "description": topic["tension"],
-            "file": f"{ep_id}.mp3",
-            "file_size": dest.stat().st_size,
-            "depth": "Standard",
-            "is_trailer": False,
-            "sources": sources,
-            "published": datetime.now(timezone.utc).isoformat(),
-        }
-        save_episode(entry)
-        return jsonify({"success": True, "topic": topic, "episode": entry, "sources": sources})
-
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({"success": False, "error": str(e)})
+    job_id = create_job("chat")
+    threading.Thread(
+        target=_run_chat,
+        args=(job_id, message, existing_topics, voice_alex, voice_morgan),
+        daemon=True
+    ).start()
+    return jsonify({"success": True, "job_id": job_id, "status": "queued"})
 
 @app.route('/api/generate', methods=['POST'])
 def api_generate():
+    """Returns job_id immediately. Poll /api/job/<job_id> for status."""
     data = request.json
-    topic_data = data.get("topic_data")  # full topic object preferred
+    topic_data = data.get("topic_data")
     topic_title = data.get("topic", "").strip()
     depth = data.get("depth", "standard")
     voice_alex = data.get("voice_alex", "Chris - Charming, Down-to-Earth")
@@ -600,53 +676,18 @@ def api_generate():
     if not ELEVEN_API_KEY:
         return jsonify({"success": False, "error": "ElevenLabs API key not configured"})
 
-    # Build topic object if only title passed
     if not topic_data:
         topic_data = {"title": topic_title, "tension": topic_title,
                       "why_it_matters": "", "common_mistake": "", "sub_questions": [],
                       "trailer_hook": data.get("trailer_hook", topic_title)}
 
-    try:
-        client = get_elevenlabs_client()
-        voice_a_id = resolve_voice(client, voice_alex)
-        voice_b_id = resolve_voice(client, voice_morgan)
-        if not voice_a_id or not voice_b_id:
-            return jsonify({"success": False, "error": "Voice not found"})
-
-        if is_trailer:
-            script, sources = build_trailer_script(topic_data)
-        else:
-            script, sources = generate_grounded_script(topic_data, depth, production_brief)
-            log_production()
-
-        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        ep_type = "trailer" if is_trailer else "episode"
-        ep_id = f"briefing-{ep_type}-{timestamp}"
-        ep_dir = EPISODES_DIR / ep_id
-        final_path = generate_episode_audio(client, script, ep_dir, voice_a_id, voice_b_id)
-
-        dest = EPISODES_DIR / f"{ep_id}.mp3"
-        shutil.copy2(final_path, dest)
-
-        label = "Trailer" if is_trailer else depth.title()
-        entry = {
-            "id": ep_id,
-            "title": f"{'[Trailer] ' if is_trailer else ''}Briefing: {topic_data['title']}",
-            "description": topic_data.get("tension", ""),
-            "file": f"{ep_id}.mp3",
-            "file_size": dest.stat().st_size,
-            "depth": label,
-            "is_trailer": is_trailer,
-            "sources": sources,
-            "published": datetime.now(timezone.utc).isoformat(),
-        }
-        save_episode(entry)
-        return jsonify({"success": True, "episode": entry, "sources": sources})
-
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({"success": False, "error": str(e)})
+    job_id = create_job("generate")
+    threading.Thread(
+        target=_run_generate,
+        args=(job_id, topic_data, depth, voice_alex, voice_morgan, is_trailer, production_brief),
+        daemon=True
+    ).start()
+    return jsonify({"success": True, "job_id": job_id, "status": "queued"})
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 8080))
