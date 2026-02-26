@@ -1,6 +1,7 @@
 import os
 import json
 import shutil
+import time
 import threading
 import uuid
 from pathlib import Path
@@ -91,6 +92,49 @@ def get_engagement_summary():
 
 ELEVEN_API_KEY = os.environ.get("ELEVEN_LABS_API_KEY") or os.environ.get("ELEVENLABS_API_KEY", "")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+
+# ---------------------------------------------------------------------------
+# COST TRACKING (fire-and-forget)
+# ---------------------------------------------------------------------------
+
+def _log_api_cost(provider, model, input_tokens, output_tokens, total_cost, latency_ms, tool_name):
+    """Fire-and-forget cost logging to centralized tracker."""
+    def _post():
+        try:
+            api_url = os.environ.get("COST_TRACKER_API_URL")
+            if not api_url:
+                return
+            import urllib.request as _req
+            payload = json.dumps({
+                "provider": provider, "model": model,
+                "input_tokens": input_tokens, "output_tokens": output_tokens,
+                "total_cost": total_cost,
+                "latency_ms": latency_ms,
+                "tool": tool_name, "user": "system", "project": "content-intelligence",
+                "status": "success",
+            }).encode()
+            req = _req.Request(
+                f"{api_url.rstrip('/')}/api/log",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            _req.urlopen(req, timeout=5)
+        except Exception as e:
+            import sys
+            print(f"[cost-tracker] logging failed: {e}", file=sys.stderr)
+    threading.Thread(target=_post, daemon=True).start()
+
+_ANTHROPIC_PRICING = {
+    "claude-opus-4-20250514": {"input": 15.0, "output": 75.0},
+    "claude-sonnet-4-20250514": {"input": 3.0, "output": 15.0},
+    "claude-sonnet-4-6": {"input": 3.0, "output": 15.0},
+    "claude-opus-4-6": {"input": 15.0, "output": 75.0},
+}
+
+def _calc_anthropic_cost(model, input_tokens, output_tokens):
+    pricing = _ANTHROPIC_PRICING.get(model, {"input": 3.0, "output": 15.0})
+    return (input_tokens * pricing["input"] / 1_000_000) + (output_tokens * pricing["output"] / 1_000_000)
 CRON_SECRET = os.environ.get("CRON_SECRET", "")
 WEEKLY_CAP = 50
 
@@ -283,8 +327,9 @@ EDITORIAL_MODEL = "claude-sonnet-4-20250514"  # cost-effective: topics, chat-to-
 
 def call_anthropic(messages, max_tokens=2500, use_web_search=False, model=None):
     import urllib.request
+    resolved_model = model or EDITORIAL_MODEL
     body = {
-        "model": model or EDITORIAL_MODEL,
+        "model": resolved_model,
         "max_tokens": max_tokens,
         "messages": messages
     }
@@ -304,8 +349,17 @@ def call_anthropic(messages, max_tokens=2500, use_web_search=False, model=None):
         headers=headers
     )
     timeout = 300 if use_web_search else 90
+    t0 = time.time()
     with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read())
+        data = json.loads(resp.read())
+    latency_ms = round((time.time() - t0) * 1000)
+    # --- cost tracking ---
+    usage = data.get("usage", {})
+    in_tok = usage.get("input_tokens", 0)
+    out_tok = usage.get("output_tokens", 0)
+    cost = _calc_anthropic_cost(resolved_model, in_tok, out_tok)
+    _log_api_cost("anthropic", resolved_model, in_tok, out_tok, cost, latency_ms, "content-intelligence")
+    return data
 
 def extract_text(data):
     return " ".join(b["text"] for b in data.get("content", []) if b.get("type") == "text").strip()
